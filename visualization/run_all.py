@@ -16,13 +16,14 @@ from pathlib import Path
 
 # Ensure matplotlib uses non-interactive backend
 import matplotlib
+
 matplotlib.use("Agg")
 
-from .config import ensure_dirs, apply_style
 from .architecture import generate_all_architecture_plots
+from .config import apply_style, ensure_dirs
+from .evaluation import generate_all_evaluation_plots
 from .features import generate_all_feature_plots
 from .risk import generate_all_risk_plots
-from .evaluation import generate_all_evaluation_plots
 
 
 def main() -> int:
@@ -37,35 +38,35 @@ Examples:
     python -m visualization.run_all --list
         """,
     )
-    
+
     parser.add_argument(
         "--mock",
         action="store_true",
         help="Use mock/synthetic data (required for demo)",
     )
-    
+
     parser.add_argument(
         "--only",
         choices=["architecture", "features", "risk", "evaluation", "all"],
         default="all",
         help="Generate only specific category of figures",
     )
-    
+
     parser.add_argument(
         "--list",
         action="store_true",
         help="List all figures that would be generated",
     )
-    
+
     parser.add_argument(
         "--verbose",
         "-v",
         action="store_true",
         help="Verbose output",
     )
-    
+
     args = parser.parse_args()
-    
+
     # List mode
     if args.list:
         print("MEWS Documentation Figures:")
@@ -88,20 +89,20 @@ Examples:
         print("\nDemo:")
         print("  - figures/demo/daily_risk_snapshot.png")
         return 0
-    
+
     # Require --mock for now (real data not yet implemented)
     if not args.mock:
         print("Error: --mock flag is required (real data generation not yet implemented)")
         return 1
-    
+
     # Ensure output directories exist
     ensure_dirs()
-    
+
     # Apply consistent style
     apply_style()
-    
+
     generated: list[Path] = []
-    
+
     try:
         if args.only in ("all", "architecture"):
             if args.verbose:
@@ -111,7 +112,7 @@ Examples:
             if args.verbose:
                 for p in paths:
                     print(f"  [OK] {p}")
-        
+
         if args.only in ("all", "features"):
             if args.verbose:
                 print("Generating feature figures...")
@@ -120,7 +121,7 @@ Examples:
             if args.verbose:
                 for p in paths:
                     print(f"  [OK] {p}")
-        
+
         if args.only in ("all", "risk"):
             if args.verbose:
                 print("Generating risk engine figures...")
@@ -129,7 +130,7 @@ Examples:
             if args.verbose:
                 for p in paths:
                     print(f"  [OK] {p}")
-        
+
         if args.only in ("all", "evaluation"):
             if args.verbose:
                 print("Generating evaluation figures...")
@@ -138,18 +139,18 @@ Examples:
             if args.verbose:
                 for p in paths:
                     print(f"  [OK] {p}")
-        
+
         print(f"\nGenerated {len(generated)} figures successfully")
-        
+
         # Verify all expected files exist
         if args.only == "all":
             expected_count = 13  # 2 arch + 3 feat + 5 risk + 3 eval
             if len(generated) != expected_count:
                 print(f"Warning: Expected {expected_count} figures, got {len(generated)}")
                 return 1
-        
+
         return 0
-        
+
     except Exception as e:
         print(f"Error generating figures: {e}")
         if args.verbose:

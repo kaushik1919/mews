@@ -9,9 +9,10 @@ Deterministic output. No interactive backends.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import matplotlib
 import matplotlib.pyplot as plt
-from pathlib import Path
 
 # Use non-interactive backend for deterministic output
 matplotlib.use("Agg")
@@ -57,31 +58,31 @@ COLORS = {
     "primary": "#2C3E50",      # Dark blue-gray
     "secondary": "#7F8C8D",    # Medium gray
     "accent": "#E74C3C",       # Red for alerts/crises
-    
+
     # Risk regime colors
     "low_risk": "#27AE60",     # Green
     "moderate_risk": "#F39C12", # Yellow/Orange
     "high_risk": "#E74C3C",    # Red
     "extreme_risk": "#8E44AD", # Purple
-    
+
     # Model colors
     "heuristic": "#3498DB",    # Blue
     "ml": "#2ECC71",           # Green
     "ensemble": "#9B59B6",     # Purple
     "random_forest": "#2ECC71",
     "xgboost": "#1ABC9C",
-    
+
     # Feature colors
     "volatility": "#E74C3C",
     "correlation": "#3498DB",
     "sentiment": "#F39C12",
     "liquidity": "#1ABC9C",
     "drawdown": "#9B59B6",
-    
+
     # Crisis shading
     "crisis_fill": "#FADBD8",  # Light red
     "crisis_edge": "#E74C3C",
-    
+
     # Grid and background
     "grid": "#ECF0F1",
     "background": "#FFFFFF",
@@ -119,7 +120,7 @@ STYLE = {
     "font.family": "sans-serif",
     "font.sans-serif": ["DejaVu Sans", "Arial", "Helvetica"],
     "font.size": 11,
-    
+
     # Axes
     "axes.titlesize": 13,
     "axes.labelsize": 11,
@@ -127,23 +128,23 @@ STYLE = {
     "axes.edgecolor": COLORS["primary"],
     "axes.labelcolor": COLORS["primary"],
     "axes.facecolor": COLORS["background"],
-    
+
     # Ticks
     "xtick.labelsize": 10,
     "ytick.labelsize": 10,
     "xtick.color": COLORS["primary"],
     "ytick.color": COLORS["primary"],
-    
+
     # Grid
     "axes.grid": True,
     "grid.alpha": 0.3,
     "grid.color": COLORS["secondary"],
     "grid.linestyle": "--",
-    
+
     # Legend
     "legend.fontsize": 10,
     "legend.framealpha": 0.9,
-    
+
     # Figure
     "figure.facecolor": COLORS["background"],
     "figure.dpi": 150,
@@ -161,10 +162,10 @@ def apply_style() -> None:
 def create_figure(size_key: str = "single") -> tuple[plt.Figure, plt.Axes]:
     """
     Create a new figure with MEWS style.
-    
+
     Args:
         size_key: Key from SIZES dict
-        
+
     Returns:
         Tuple of (figure, axes)
     """
@@ -180,12 +181,12 @@ def create_subplots(
 ) -> tuple[plt.Figure, list]:
     """
     Create subplots with MEWS style.
-    
+
     Args:
         nrows: Number of rows
         ncols: Number of columns
         size_key: Key from SIZES dict
-        
+
     Returns:
         Tuple of (figure, axes_list)
     """
@@ -201,14 +202,14 @@ def shade_crisis_periods(
 ) -> None:
     """
     Add shaded regions for crisis periods.
-    
+
     Args:
         ax: Matplotlib axes
         crisis_periods: List of (start_date, end_date) tuples as strings
         alpha: Opacity of shading
     """
     import pandas as pd
-    
+
     for start, end in crisis_periods:
         ax.axvspan(
             pd.Timestamp(start),
@@ -226,15 +227,15 @@ def add_regime_background(
 ) -> None:
     """
     Add horizontal bands showing regime thresholds.
-    
+
     Args:
         ax: Matplotlib axes
         show_labels: Whether to add regime labels
     """
     thresholds = [(0.0, 0.25), (0.25, 0.50), (0.50, 0.75), (0.75, 1.0)]
     regimes = ["LOW_RISK", "MODERATE_RISK", "HIGH_RISK", "EXTREME_RISK"]
-    
-    for (low, high), regime in zip(thresholds, regimes):
+
+    for (low, high), regime in zip(thresholds, regimes, strict=True):
         ax.axhspan(low, high, alpha=0.1, color=REGIME_COLORS[regime])
         if show_labels:
             ax.text(
@@ -249,7 +250,7 @@ def add_regime_background(
 def save_figure(fig: plt.Figure, path: Path, close: bool = True) -> None:
     """
     Save figure to file.
-    
+
     Args:
         fig: Matplotlib figure
         path: Output path

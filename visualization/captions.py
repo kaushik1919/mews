@@ -122,10 +122,10 @@ ALL_CAPTIONS = {
 def get_caption(filename: str) -> str:
     """
     Get caption for a figure file.
-    
+
     Args:
         filename: Figure filename (e.g., 'mews_architecture.png')
-        
+
     Returns:
         Caption string or empty string if not found
     """
@@ -135,10 +135,10 @@ def get_caption(filename: str) -> str:
 def format_caption_for_markdown(filename: str) -> str:
     """
     Format caption for README markdown.
-    
+
     Args:
         filename: Figure filename
-        
+
     Returns:
         Markdown-formatted caption with italics
     """
