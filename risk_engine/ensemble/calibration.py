@@ -151,11 +151,12 @@ class FittedCalibrator:
 
 
 def fit_calibrator(
-    scores: np.ndarray,
-    targets: np.ndarray | None = None,
     *,
+    raw_scores: np.ndarray | None = None,
+    scores: np.ndarray | None = None,
+    targets: np.ndarray | None = None,
     y: np.ndarray | None = None,
-    method: str | CalibrationMethod | CalibratorConfig | None = None,
+    method: str | CalibrationMethod | CalibratorConfig | None = "platt",
 ) -> FittedCalibrator:
     """
     Fit a calibrator on training + validation data.
@@ -164,8 +165,9 @@ def fit_calibrator(
     Never include test data in calibration fitting.
 
     Args:
+        raw_scores: Raw ensemble scores from train + val (alias for scores)
         scores: Raw ensemble scores from train + val
-        targets: True regime labels (0-3) or binary labels (primary argument)
+        targets: True regime labels (0-3) or binary labels
         y: Alias for targets (backward compatibility)
         method: Calibration method or configuration
 
@@ -175,9 +177,23 @@ def fit_calibrator(
     Raises:
         ValueError: If inputs are invalid
     """
-    # Canonicalize targets (targets is primary, y is for backward compat)
+    # Resolve scores (accept either raw_scores or scores, not both)
+    if raw_scores is not None and scores is not None:
+        raise ValueError("Provide only one of `raw_scores` or `scores`")
+
+    if raw_scores is None and scores is None:
+        raise ValueError("One of `raw_scores` or `scores` must be provided")
+
+    if scores is None:
+        scores = raw_scores
+
+    # Resolve targets (accept either targets or y, not both)
+    if targets is not None and y is not None:
+        raise ValueError("Provide only one of `targets` or `y`")
+
     if targets is None and y is None:
-        raise ValueError("Either `targets` or `y` must be provided")
+        raise ValueError("One of `targets` or `y` must be provided")
+
     if targets is None:
         targets = y
 
@@ -203,29 +219,25 @@ def fit_calibrator(
     else:
         config = CalibratorConfig()
 
-    # Use canonical names internally
-    raw_scores = scores
-    true_labels = targets
+    # Use canonical names internally (scores and targets only from here)
+    raw_scores_arr = np.asarray(scores).flatten()
+    true_labels = np.asarray(targets).flatten()
 
-    # Validate inputs
-    raw_scores = np.asarray(raw_scores).flatten()
-    true_labels = np.asarray(true_labels).flatten()
-
-    if len(raw_scores) != len(true_labels):
+    if len(raw_scores_arr) != len(true_labels):
         raise ValueError(
-            f"Score and label lengths must match: {len(raw_scores)} vs {len(true_labels)}"
+            f"Score and label lengths must match: {len(raw_scores_arr)} vs {len(true_labels)}"
         )
 
-    if len(raw_scores) < 10:
+    if len(raw_scores_arr) < 10:
         logger.warning(
-            f"Very few samples for calibration: {len(raw_scores)}. "
+            f"Very few samples for calibration: {len(raw_scores_arr)}. "
             "Consider using NONE method."
         )
 
     # Create calibrator
     calibrator = FittedCalibrator(
         method=config.method,
-        train_score_range=(float(raw_scores.min()), float(raw_scores.max())),
+        train_score_range=(float(raw_scores_arr.min()), float(raw_scores_arr.max())),
     )
 
     if config.method == CalibrationMethod.NONE:
@@ -238,10 +250,10 @@ def fit_calibrator(
     target_probs = true_labels / (n_classes - 1) if n_classes > 1 else true_labels
 
     if config.method == CalibrationMethod.PLATT_SCALING:
-        _fit_platt(calibrator, raw_scores, target_probs, config)
+        _fit_platt(calibrator, raw_scores_arr, target_probs, config)
 
     elif config.method == CalibrationMethod.ISOTONIC_REGRESSION:
-        _fit_isotonic(calibrator, raw_scores, target_probs, config)
+        _fit_isotonic(calibrator, raw_scores_arr, target_probs, config)
 
     calibrator.is_fitted = True
     return calibrator
