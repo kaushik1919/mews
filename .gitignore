@@ -55,12 +55,13 @@ htmlcov/
 .ipynb_checkpoints/
 *.ipynb
 
-# Data artifacts (future phases)
+# Data artifacts (Phase 2+)
 data/
 *.csv
 *.parquet
 *.json
 !core-specs/*.yaml
+!data-ingestion/outputs/datasets/market_prices/v1/.gitkeep
 
 # Logs
 *.log

@@ -1,5 +1,5 @@
 # MEWS-FIN: Market Risk Early Warning System
-# Phase 1: Core specs and scaffold only
+# Phase 2: Data ingestion and time alignment
 
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mews-fin"
-version = "0.1.0"
+version = "0.2.0"
 description = "Research-grade Market Risk Early Warning System using free public data"
 readme = "README.md"
 license = {text = "MIT"}
@@ -34,16 +34,24 @@ classifiers = [
     "Typing :: Typed",
 ]
 
-# Phase 1: Minimal dependencies for spec validation only
+# Phase 2: Dependencies for data ingestion
 dependencies = [
     "pyyaml>=6.0",
+    "pandas>=2.0",
+    "pyarrow>=14.0",
 ]
 
 [project.optional-dependencies]
+live = [
+    # Optional: for live data fetching
+    "yfinance>=0.2.0",
+    "pandas-market-calendars>=4.0",
+]
 dev = [
     "ruff>=0.1.0",
     "pytest>=7.0",
     "yamllint>=1.32",
+    "pandas-market-calendars>=4.0",
 ]
 
 [project.urls]
@@ -52,6 +60,8 @@ Repository = "https://github.com/mews-fin/mews-fin"
 [tool.ruff]
 target-version = "py310"
 line-length = 100
+
+[tool.ruff.lint]
 select = [
     "E",   # pycodestyle errors
     "W",   # pycodestyle warnings
@@ -65,8 +75,8 @@ ignore = [
     "E501",  # line too long (handled by formatter)
 ]
 
-[tool.ruff.isort]
-known-first-party = ["mews_fin"]
+[tool.ruff.lint.isort]
+known-first-party = ["mews_fin", "data_ingestion"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

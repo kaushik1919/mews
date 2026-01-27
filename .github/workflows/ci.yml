@@ -1,5 +1,5 @@
 # MEWS-FIN Continuous Integration
-# Phase 1: Spec validation and linting only
+# Phase 2: Spec validation, linting, and ingestion validation
 # No deployment logic
 
 name: CI
@@ -27,7 +27,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyyaml yamllint
+          pip install pyyaml yamllint  # Minimal deps for spec validation
           
       - name: Validate YAML syntax
         run: |
@@ -103,14 +103,12 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install ruff
+          pip install ruff  # Minimal deps for linting
           
       - name: Check Python formatting
         run: |
           echo "Checking Python code with ruff..."
-          # In Phase 1, we may not have Python files yet
-          # This will pass if no Python files exist
-          ruff check . --ignore E501 || true
+          ruff check . --ignore E501
           echo "Lint check complete."
           
   validate-structure:
@@ -134,6 +132,10 @@ jobs:
             "core-specs/datasets.yaml"
             "core-specs/time_alignment.yaml"
             "core-specs/risk_score.yaml"
+            "data-ingestion/run_ingestion.py"
+            "data-ingestion/adapters/__init__.py"
+            "data-ingestion/alignment/__init__.py"
+            "data-ingestion/schemas/__init__.py"
           )
           
           missing=0
@@ -152,3 +154,74 @@ jobs:
           fi
           
           echo "Repository structure is valid."
+
+  validate-ingestion:
+    name: Validate Ingestion Pipeline
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .  # Install from pyproject.toml
+          
+      - name: Run ingestion dry-run with mock data
+        run: |
+          echo "Running ingestion pipeline in dry-run mode..."
+          cd data-ingestion
+          python run_ingestion.py \
+            --dataset market_prices \
+            --mock \
+            --dry-run \
+            --fallback-calendar \
+            --tickers SPY,QQQ \
+            --days 5
+          echo "Ingestion dry-run complete."
+          
+      - name: Validate schema loading
+        run: |
+          echo "Validating schema loading from core-specs..."
+          python -c "
+          import sys
+          sys.path.insert(0, 'data-ingestion')
+          from schemas import load_dataset_schema
+          
+          schema = load_dataset_schema('market_prices')
+          print(f'Loaded market_prices schema')
+          print(f'  Fields: {list(schema[\"schema\"][\"fields\"].keys())}')
+          print(f'  Frequency: {schema[\"frequency\"]}')
+          print('Schema validation passed.')
+          "
+          
+      - name: Validate time alignment rules
+        run: |
+          echo "Validating time alignment module..."
+          python -c "
+          import sys
+          sys.path.insert(0, 'data-ingestion')
+          from alignment import TimeAligner, NYSECalendar
+          from alignment.lag_rules import DatasetType, get_publication_lag
+          
+          # Check lag rules match spec
+          lag = get_publication_lag(DatasetType.MARKET_PRICES)
+          assert lag.lag_days == 0, 'market_prices should have 0d lag'
+          assert lag.alignment_mode == 'native', 'market_prices should use native alignment'
+          print(f'market_prices lag rule: {lag}')
+          
+          # Check calendar
+          cal = NYSECalendar(use_fallback=True)
+          from datetime import date
+          assert cal.is_trading_day(date(2024, 1, 15))  # Monday
+          assert not cal.is_trading_day(date(2024, 1, 13))  # Saturday
+          print('Calendar validation passed.')
+          
+          print('Time alignment validation complete.')
+          "
