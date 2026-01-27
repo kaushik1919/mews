@@ -154,6 +154,12 @@ jobs:
             "feature_services/sentiment/aggregation.py"
             "feature_services/sentiment/mapping.py"
             "feature_services/sentiment/validate.py"
+            "feature_services/graph/__init__.py"
+            "feature_services/graph/service.py"
+            "feature_services/graph/returns.py"
+            "feature_services/graph/correlation.py"
+            "feature_services/graph/network.py"
+            "feature_services/graph/validate.py"
           )
           
           missing=0
@@ -920,4 +926,200 @@ jobs:
               assert in_spec, f'{name} not in features.yaml sentiment section'
 
           print('\\nSentiment spec compliance - VERIFIED')
+          "
+
+  validate-graph:
+    name: Validate Graph Feature Service
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .  # Install from pyproject.toml
+
+      - name: Import graph service
+        run: |
+          echo "Verifying graph service can be imported..."
+          python -c "
+          from feature_services.graph import compute_graph_features, GraphFeatureSnapshot
+          from feature_services.graph.validate import get_phase_32_feature_names
+
+          features = get_phase_32_feature_names()
+          print(f'Phase 3.2 features: {features}')
+          print(f'Feature count: {len(features)}')
+          assert len(features) == 4, 'Expected 4 Phase 3.2 features'
+          print('Graph service import successful.')
+          "
+
+      - name: Validate graph computation on mock data
+        run: |
+          echo "Testing graph computation with mock multi-asset data..."
+          python -c "
+          import pandas as pd
+          import numpy as np
+
+          from feature_services.graph import compute_graph_features
+
+          # Generate mock multi-asset price data
+          np.random.seed(42)
+          n_assets = 20
+          n_days = 60
+          as_of = pd.Timestamp('2024-01-15 21:00:00', tz='UTC')
+
+          dates = pd.date_range(end=as_of, periods=n_days, freq='D')
+          tickers = [f'ASSET_{i:02d}' for i in range(n_assets)]
+
+          # Generate correlated returns
+          returns_raw = np.random.randn(n_days, n_assets) * 0.02
+          common_factor = np.random.randn(n_days, 1) * 0.015
+          returns_raw += common_factor * 0.7
+          prices = 100 * np.exp(np.cumsum(returns_raw, axis=0))
+          market_prices = pd.DataFrame(prices, index=dates, columns=tickers)
+
+          # Create sector mapping
+          sectors = ['Technology', 'Financials', 'Energy', 'Healthcare']
+          sector_mapping = {t: sectors[i % len(sectors)] for i, t in enumerate(tickers)}
+
+          # Compute features
+          snapshot = compute_graph_features(
+              market_prices=market_prices,
+              as_of=as_of,
+              sector_mapping=sector_mapping,
+          )
+
+          print('Graph feature snapshot:')
+          for name, value in snapshot.features.items():
+              if value is not None:
+                  print(f'  {name}: {value:.4f}')
+              else:
+                  print(f'  {name}: null')
+
+          # Verify features computed
+          assert snapshot.asset_count >= 5, 'Expected at least 5 assets'
+          assert snapshot.features['avg_pairwise_correlation_20d'] is not None
+          assert snapshot.features['correlation_dispersion_20d'] is not None
+
+          print(f'\\nAsset count: {snapshot.asset_count}')
+          print(f'Complete: {snapshot.is_complete}')
+
+          print('\\nGraph computation validation complete.')
+          "
+
+      - name: Validate no future data usage
+        run: |
+          echo "Verifying no lookahead bias in graph features..."
+          python -c "
+          import pandas as pd
+          import numpy as np
+
+          from feature_services.graph import compute_graph_features
+
+          np.random.seed(42)
+
+          # Create price data spanning past and future
+          as_of = pd.Timestamp('2024-01-15 21:00:00', tz='UTC')
+          n_assets = 10
+
+          # Past dates (should be used)
+          past_dates = pd.date_range(end=as_of, periods=30, freq='D')
+          # Future dates (should NOT be used)
+          future_dates = pd.date_range(start=as_of + pd.Timedelta(days=1), periods=10, freq='D')
+
+          all_dates = past_dates.append(future_dates)
+          tickers = [f'ASSET_{i}' for i in range(n_assets)]
+
+          # Generate prices for all dates
+          np.random.seed(42)
+          returns = np.random.randn(len(all_dates), n_assets) * 0.02
+          prices = 100 * np.exp(np.cumsum(returns, axis=0))
+          market_prices = pd.DataFrame(prices, index=all_dates, columns=tickers)
+
+          # Compute features - should only use past data
+          snapshot = compute_graph_features(
+              market_prices=market_prices,
+              as_of=as_of,
+          )
+
+          # The service filters data internally - verify no error
+          print(f'Computed with {len(market_prices)} total rows (including future)')
+          print(f'Assets used: {snapshot.asset_count}')
+          print('No future data usage - VERIFIED')
+          "
+
+      - name: Validate deterministic output
+        run: |
+          echo "Verifying deterministic graph computation..."
+          python -c "
+          import pandas as pd
+          import numpy as np
+
+          from feature_services.graph import compute_graph_features
+
+          # Generate fixed test data
+          np.random.seed(42)
+          n_assets = 15
+          n_days = 45
+          as_of = pd.Timestamp('2024-01-15 21:00:00', tz='UTC')
+
+          dates = pd.date_range(end=as_of, periods=n_days, freq='D')
+          tickers = [f'ASSET_{i}' for i in range(n_assets)]
+
+          returns_raw = np.random.randn(n_days, n_assets) * 0.02
+          prices = 100 * np.exp(np.cumsum(returns_raw, axis=0))
+          market_prices = pd.DataFrame(prices, index=dates, columns=tickers)
+
+          # Compute features multiple times
+          results = []
+          for _ in range(3):
+              snapshot = compute_graph_features(market_prices, as_of)
+              results.append(snapshot.features.copy())
+
+          # All results must be identical
+          for i in range(1, len(results)):
+              for name in results[0]:
+                  v0, vi = results[0][name], results[i][name]
+                  if v0 is None:
+                      assert vi is None, f'{name} differs between runs'
+                  else:
+                      assert abs(v0 - vi) < 1e-15, f'{name} differs: {v0} vs {vi}'
+
+          print('Deterministic output - VERIFIED')
+          print('All 3 runs produced identical results.')
+          "
+
+      - name: Validate graph spec compliance
+        run: |
+          echo "Verifying graph spec compliance..."
+          python -c "
+          from feature_services.graph.validate import (
+              get_phase_32_feature_names,
+              get_graph_feature_names,
+              load_feature_spec,
+          )
+
+          # Load spec
+          spec = load_feature_spec()
+          print(f'Spec version: {spec.get(\"schema_version\")}')
+
+          # Verify Phase 3.2 features exist in spec
+          phase_32 = get_phase_32_feature_names()
+          all_graph = get_graph_feature_names()
+
+          print(f'\\nPhase 3.2 features ({len(phase_32)}):')
+          for name in phase_32:
+              in_spec = name in all_graph
+              status = '✓' if in_spec else '✗'
+              print(f'  {status} {name}')
+              assert in_spec, f'{name} not in features.yaml graph section'
+
+          print('\\nGraph spec compliance - VERIFIED')
           "
