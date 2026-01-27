@@ -2576,3 +2576,112 @@ jobs:
           
           print('\nDeterministic figure generation - VERIFIED')
           "
+
+  validate-packaging:
+    name: Validate Python Packaging
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install package
+        run: |
+          echo "Installing MEWS package..."
+          python -m pip install --upgrade pip
+          pip install .
+          echo "Package installation complete."
+
+      - name: Verify CLI entry point
+        run: |
+          echo "Verifying mews-run CLI entry point..."
+          which mews-run || echo "mews-run not found in PATH"
+          mews-run --help
+          echo "CLI entry point verified."
+
+      - name: Run pipeline via CLI
+        run: |
+          echo "Running daily pipeline via mews-run CLI..."
+          mews-run --mock --verbose
+          echo "Pipeline execution via CLI - VERIFIED"
+
+      - name: Verify all packages importable
+        run: |
+          echo "Verifying all packages are importable..."
+          python -c "
+          import data_ingestion
+          import data_ingestion.adapters
+          import data_ingestion.adapters.market_prices
+          import data_ingestion.adapters.volatility_indices
+          import data_ingestion.adapters.macro_rates
+          import data_ingestion.adapters.financial_news
+          import data_ingestion.alignment
+          import data_ingestion.schemas
+          import data_ingestion.outputs
+
+          import feature_services
+          import feature_services.numeric
+          import feature_services.sentiment
+          import feature_services.graph
+
+          import risk_engine
+          import risk_engine.heuristic
+          import risk_engine.ml
+          import risk_engine.ensemble
+          import risk_engine.evaluation
+
+          import pipeline
+          import pipeline.daily_run
+
+          import visualization
+
+          print('All packages imported successfully.')
+          "
+
+  validate-docker:
+    name: Validate Docker Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        run: |
+          echo "Building Docker image..."
+          docker build -t mews:ci-test .
+          echo "Docker build complete."
+
+      - name: Verify image size
+        run: |
+          echo "Checking Docker image size..."
+          SIZE=$(docker image inspect mews:ci-test --format='{{.Size}}')
+          SIZE_MB=$((SIZE / 1024 / 1024))
+          echo "Image size: ${SIZE_MB} MB"
+          
+          # Warn if image exceeds 1.5GB (allow some margin)
+          if [ $SIZE_MB -gt 1500 ]; then
+            echo "Warning: Image size exceeds 1.5GB target"
+          else
+            echo "Image size is within target (<1.5GB)"
+          fi
+
+      - name: Run container in mock mode
+        run: |
+          echo "Running MEWS container in mock mode..."
+          docker run --rm mews:ci-test --mock --verbose
+          echo "Container execution - VERIFIED"
+
+      - name: Test environment variable override
+        run: |
+          echo "Testing MEWS_MODE environment variable..."
+          docker run --rm -e MEWS_MODE=mock mews:ci-test --verbose
+          echo "Environment variable override - VERIFIED"

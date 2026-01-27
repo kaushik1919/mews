@@ -1,0 +1,67 @@
+# MEWS Docker Ignore File
+# Exclude files not needed in Docker image
+
+# Git
+.git/
+.gitignore
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+*.egg
+dist/
+build/
+eggs/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing and linting
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Local development artifacts
+*.log
+*.tmp
+*.bak
+
+# Generated figures (rebuilt at runtime if needed)
+figures/
+
+# CI/CD (not needed in runtime image)
+.github/
+
+# Documentation build artifacts
+docs/_build/
+
+# Local data outputs (rebuilt at runtime)
+data_ingestion/outputs/datasets/
+
+# Docker files (prevent recursion)
+Dockerfile
+.dockerignore
+
+# Misc
+.DS_Store
+Thumbs.db
+*.md
+!core-specs/README.md

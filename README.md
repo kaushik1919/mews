@@ -147,14 +147,52 @@ MEWS is evaluated against four historical crises: 2008 GFC, 2011 Eurozone, 2020 
 git clone https://github.com/your-org/mews.git
 cd mews
 
-# Create virtual environment
+# Create virtual environment (recommended)
 python -m venv .venv
 .venv\Scripts\activate  # Windows
 # source .venv/bin/activate  # Unix
 
-# Install dependencies
+# Install MEWS (editable mode for development)
 pip install -e ".[dev]"
+
+# Or install in production mode
+pip install .
 ```
+
+#### CLI Entry Point
+
+After installation, MEWS provides a CLI command:
+
+```bash
+# Run daily pipeline via CLI
+mews-run --mock --verbose
+
+# Show help
+mews-run --help
+```
+
+#### Docker Installation
+
+For containerized deployment:
+
+```bash
+# Build image
+docker build -t mews:latest .
+
+# Run with mock data
+docker run --rm mews:latest --mock
+
+# Run for specific date
+docker run --rm -e MEWS_DATE=2024-01-15 mews:latest
+
+# Run with real data (live mode)
+docker run --rm -e MEWS_MODE=live mews:latest
+```
+
+**Resource Requirements:**
+- Memory: ~2GB (FinBERT model loading)
+- CPU: Any modern CPU (no GPU required)
+- Disk: ~1GB Docker image
 
 ### Run Daily Pipeline
 

@@ -1,19 +1,19 @@
-# MEWS-FIN: Market Risk Early Warning System
-# Phase 3.0: Numeric feature computation
+# MEWS: Market Early Warning System
+# Phase 5C: Packaging and distribution
 
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mews-fin"
-version = "0.3.0"
-description = "Research-grade Market Risk Early Warning System using free public data"
+name = "mews"
+version = "1.0.0"
+description = "Research-grade Market Early Warning System using free public data"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
 authors = [
-    {name = "MEWS-FIN Contributors"}
+    {name = "MEWS Contributors"}
 ]
 keywords = [
     "systemic-risk",
@@ -58,7 +58,10 @@ dev = [
 ]
 
 [project.urls]
-Repository = "https://github.com/mews-fin/mews-fin"
+Repository = "https://github.com/mews/mews"
+
+[project.scripts]
+mews-run = "pipeline.daily_run.run:main"
 
 [tool.ruff]
 target-version = "py310"
@@ -79,7 +82,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["mews_fin", "data_ingestion", "feature_services"]
+known-first-party = ["data_ingestion", "feature_services", "risk_engine", "pipeline", "visualization"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -90,6 +93,24 @@ addopts = "-v --tb=short"
 [tool.setuptools]
 packages = [
     "data_ingestion",
+    "data_ingestion.adapters",
+    "data_ingestion.adapters.financial_news",
+    "data_ingestion.adapters.macro_rates",
+    "data_ingestion.adapters.market_prices",
+    "data_ingestion.adapters.volatility_indices",
+    "data_ingestion.alignment",
+    "data_ingestion.outputs",
+    "data_ingestion.schemas",
     "feature_services",
-    "risk_engine"
+    "feature_services.graph",
+    "feature_services.numeric",
+    "feature_services.sentiment",
+    "risk_engine",
+    "risk_engine.ensemble",
+    "risk_engine.evaluation",
+    "risk_engine.heuristic",
+    "risk_engine.ml",
+    "pipeline",
+    "pipeline.daily_run",
+    "visualization",
 ]
