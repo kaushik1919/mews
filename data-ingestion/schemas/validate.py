@@ -332,6 +332,28 @@ class SchemaValidator:
             if close is not None and close > 100:
                 warnings.append(f"VIX close={close} is unusually high (>100)")
 
+        # Macro rates quality rules
+        # From datasets.yaml:
+        # - Allow null for holidays and weekends
+        # - Forward-fill nulls up to 5 days for features
+        # - Flag structural breaks
+        elif self._dataset_name == "macro_rates":
+            value = data.get("value")
+            series_id = data.get("series_id")
+
+            # value can be NULL (holidays, weekends, forward-fill expiry)
+            # This is explicitly allowed per spec
+
+            # If value is present, validate it's a reasonable rate/spread
+            if value is not None:
+                # Most rates should be in range -5% to 30%
+                # (negative rates happened in Europe, high rates in crises)
+                if value < -10 or value > 50:
+                    warnings.append(
+                        f"value={value} is outside typical range [-10, 50] "
+                        f"for series {series_id}"
+                    )
+
         return {"errors": errors, "warnings": warnings}
 
 

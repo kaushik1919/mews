@@ -136,7 +136,9 @@ jobs:
             "data-ingestion/adapters/__init__.py"
             "data-ingestion/adapters/market_prices/__init__.py"
             "data-ingestion/adapters/volatility_indices/__init__.py"
+            "data-ingestion/adapters/macro_rates/__init__.py"
             "data-ingestion/alignment/__init__.py"
+            "data-ingestion/alignment/forward_fill.py"
             "data-ingestion/schemas/__init__.py"
           )
           
@@ -201,6 +203,19 @@ jobs:
             --days 5
           echo "volatility_indices dry-run complete."
 
+      - name: Run macro_rates ingestion dry-run
+        run: |
+          echo "Running macro_rates ingestion in dry-run mode..."
+          cd data-ingestion
+          python run_ingestion.py \
+            --dataset macro_rates \
+            --mock \
+            --dry-run \
+            --fallback-calendar \
+            --tickers DGS10,DGS2,DFF \
+            --days 10
+          echo "macro_rates dry-run complete."
+
       - name: Validate schema loading
         run: |
           echo "Validating schema loading from core-specs..."
@@ -217,6 +232,12 @@ jobs:
           # Validate volatility_indices schema
           schema = load_dataset_schema('volatility_indices')
           print(f'Loaded volatility_indices schema')
+          print(f'  Fields: {list(schema[\"schema\"][\"fields\"].keys())}')
+          print(f'  Frequency: {schema[\"frequency\"]}')
+
+          # Validate macro_rates schema
+          schema = load_dataset_schema('macro_rates')
+          print(f'Loaded macro_rates schema')
           print(f'  Fields: {list(schema[\"schema\"][\"fields\"].keys())}')
           print(f'  Frequency: {schema[\"frequency\"]}')
 
@@ -243,6 +264,12 @@ jobs:
           assert lag.alignment_mode == 'native', 'volatility_indices should use native alignment'
           print(f'volatility_indices lag rule: {lag}')
 
+          # Check macro_rates lag rules (1d lag per time_alignment.yaml)
+          lag = get_publication_lag(DatasetType.MACRO_RATES)
+          assert lag.lag_days == 1, 'macro_rates should have 1d lag'
+          assert lag.alignment_mode == 'assign_to_previous_close', 'macro_rates should align to previous close'
+          print(f'macro_rates lag rule: {lag}')
+
           # Check calendar
           cal = NYSECalendar(use_fallback=True)
           from datetime import date
@@ -251,4 +278,71 @@ jobs:
           print('Calendar validation passed.')
 
           print('Time alignment validation complete.')
+          "
+
+      - name: Validate forward-fill logic
+        run: |
+          echo "Validating forward-fill module..."
+          cd data-ingestion
+          python -c "
+          from alignment import forward_fill_series, ForwardFillConfig, NYSECalendar
+          from datetime import date
+
+          # Create test data with a gap
+          cal = NYSECalendar(use_fallback=True)
+          test_records = [
+              {'series_id': 'DGS10', 'aligned_to_date': date(2024, 1, 15), 'value': 4.12},
+              {'series_id': 'DGS10', 'aligned_to_date': date(2024, 1, 16), 'value': None},  # Gap
+              {'series_id': 'DGS10', 'aligned_to_date': date(2024, 1, 17), 'value': None},  # Gap
+              {'series_id': 'DGS10', 'aligned_to_date': date(2024, 1, 18), 'value': 4.15},
+          ]
+
+          # Apply forward-fill
+          config = ForwardFillConfig(max_gap_trading_days=5)
+          filled = forward_fill_series(
+              test_records,
+              series_id_field='series_id',
+              value_field='value',
+              date_field='aligned_to_date',
+              calendar=cal,
+              config=config,
+          )
+
+          # Verify fill behavior
+          assert len(filled) == 4, f'Expected 4 records, got {len(filled)}'
+          assert filled[0]['value'] == 4.12, 'First value should be unchanged'
+          assert filled[1]['value'] == 4.12, 'Second value should be filled from first'
+          assert filled[1].get('_forward_filled') == True, 'Should be marked as filled'
+          assert filled[2]['value'] == 4.12, 'Third value should be filled from first'
+          assert filled[3]['value'] == 4.15, 'Fourth value should be original'
+
+          print('Forward-fill gap fill verified.')
+
+          # Test fill expiry (gap > 5 days)
+          long_gap_records = [
+              {'series_id': 'TEST', 'aligned_to_date': date(2024, 1, 2), 'value': 1.0},
+              {'series_id': 'TEST', 'aligned_to_date': date(2024, 1, 3), 'value': None},
+              {'series_id': 'TEST', 'aligned_to_date': date(2024, 1, 4), 'value': None},
+              {'series_id': 'TEST', 'aligned_to_date': date(2024, 1, 5), 'value': None},
+              {'series_id': 'TEST', 'aligned_to_date': date(2024, 1, 8), 'value': None},
+              {'series_id': 'TEST', 'aligned_to_date': date(2024, 1, 9), 'value': None},
+              {'series_id': 'TEST', 'aligned_to_date': date(2024, 1, 10), 'value': None},  # 6th trading day - should expire
+          ]
+
+          filled_long = forward_fill_series(
+              long_gap_records,
+              series_id_field='series_id',
+              value_field='value',
+              date_field='aligned_to_date',
+              calendar=cal,
+              config=config,
+          )
+
+          # First 5 trading days should be filled, 6th should be NULL
+          assert filled_long[5]['value'] == 1.0, 'Day 5 should still be filled'
+          assert filled_long[6]['value'] is None, 'Day 6 (>5 gap) should be NULL'
+          assert filled_long[6].get('_fill_expired') == True, 'Should be marked as expired'
+
+          print('Forward-fill expiry verified.')
+          print('Forward-fill validation complete.')
           "

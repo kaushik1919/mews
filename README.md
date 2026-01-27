@@ -19,10 +19,6 @@ MEWS-FIN is designed to provide **early warning signals** of systemic market str
 
 The primary output is a single **risk score** in [0, 1] that quantifies current systemic stress levels based on observable market signals.
 
-## Why Free Public Data Only?
-
-MEWS-FIN is built on a strict constraint: **no proprietary data, no paid feeds, no vendor lock-in**.
-
 ### Data Sources
 
 | Category | Sources | Purpose |
@@ -63,13 +59,13 @@ MEWS-FIN follows a **logical microservices, physical monolith** architecture:
 
 ## Project Phases
 
-### Phase 1: Foundation ✅ (Current)
+### Phase 1: Foundation ✅ 
 - Repository scaffold
 - Core specifications (`core-specs/`)
 - Documentation
 - CI/CD pipeline
 
-### Phase 2: Data Layer (Planned)
+### Phase 2: Data Layer (Current)
 - Ingestion services for each data source
 - Data validation and quality checks
 - Storage infrastructure

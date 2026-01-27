@@ -18,9 +18,16 @@ import sys
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from adapters.macro_rates import MacroRatesAdapter
 from adapters.market_prices import MarketPricesAdapter
 from adapters.volatility_indices import VolatilityIndicesAdapter
-from alignment import AlignedRecord, NYSECalendar, TimeAligner
+from alignment import (
+    AlignedRecord,
+    ForwardFillConfig,
+    NYSECalendar,
+    TimeAligner,
+    forward_fill_series,
+)
 from alignment.lag_rules import DatasetType
 from outputs import records_to_dataframe, write_parquet
 from schemas import SchemaValidator
@@ -67,8 +74,7 @@ class IngestionPipeline:
         adapters = {
             "market_prices": MarketPricesAdapter(use_mock=self._use_mock),
             "volatility_indices": VolatilityIndicesAdapter(use_mock=self._use_mock),
-            # Future: Add other adapters here
-            # "macro_rates": MacroRatesAdapter(...),
+            "macro_rates": MacroRatesAdapter(use_mock=self._use_mock),
         }
 
         if dataset_name not in adapters:
@@ -152,6 +158,18 @@ class IngestionPipeline:
         stats["aligned_records"] = len(aligned_records)
         print(f"  → Aligned {len(aligned_records)} records")
 
+        # Step 2.5: Apply forward-fill for macro_rates
+        # Per time_alignment.yaml: forward-fill max 5 trading days
+        if self._dataset_name == "macro_rates":
+            print("\nStep 2.5: Applying bounded forward-fill (max 5 trading days)...")
+            aligned_records = self._apply_forward_fill(
+                aligned_records,
+                start_date.date(),
+                end_date.date(),
+            )
+            stats["aligned_records"] = len(aligned_records)
+            print(f"  → Records after forward-fill: {len(aligned_records)}")
+
         # Step 3: Validate against schema
         print("\nStep 3: Validating against schema...")
         valid_records, invalid_with_results = self._validator.validate_batch(aligned_records)
@@ -205,6 +223,87 @@ class IngestionPipeline:
 
         return stats
 
+    def _apply_forward_fill(
+        self,
+        aligned_records: list[AlignedRecord],
+        start_date,
+        end_date,
+    ) -> list[AlignedRecord]:
+        """
+        Apply bounded forward-fill for macro_rates.
+
+        Per time_alignment.yaml:
+        - max_gap: 5 trading days
+        - Applicable to: macro_rates, volatility_indices
+        - If gap exceeds max_gap, value becomes NULL
+
+        This ensures temporal integrity - values don't persist
+        indefinitely when source data is missing.
+        """
+        from datetime import date
+
+        # Convert aligned records to dicts for forward-fill
+        record_dicts = []
+        for rec in aligned_records:
+            record_dicts.append({
+                "series_id": rec.asset_id,
+                "aligned_to_date": rec.aligned_to_date,
+                "timestamp": rec.timestamp,
+                "value": rec.data.get("value"),
+                "source": rec.source,
+                "ingestion_metadata": rec.ingestion_metadata,
+            })
+
+        # Generate placeholder records for missing trading days
+        from alignment import generate_missing_dates
+
+        missing = generate_missing_dates(
+            record_dicts,
+            series_id_field="series_id",
+            date_field="aligned_to_date",
+            start_date=start_date if isinstance(start_date, date) else start_date,
+            end_date=end_date if isinstance(end_date, date) else end_date,
+            calendar=self._calendar,
+        )
+
+        # Merge missing placeholders with existing records
+        all_records = record_dicts + missing
+
+        # Apply forward-fill
+        filled_records = forward_fill_series(
+            all_records,
+            series_id_field="series_id",
+            value_field="value",
+            date_field="aligned_to_date",
+            calendar=self._calendar,
+            config=ForwardFillConfig(max_gap_trading_days=5),
+        )
+
+        # Convert back to AlignedRecord objects
+        result = []
+        for rec in filled_records:
+            # Build ingestion metadata with forward-fill info
+            meta = rec.get("ingestion_metadata", {})
+            if rec.get("_forward_filled"):
+                meta["forward_filled"] = True
+                meta["filled_from_date"] = rec.get("_filled_from_date")
+                meta["gap_trading_days"] = rec.get("_gap_trading_days")
+            if rec.get("_fill_expired"):
+                meta["fill_expired"] = True
+                meta["gap_trading_days"] = rec.get("_gap_trading_days")
+
+            aligned = AlignedRecord(
+                timestamp=rec["timestamp"] if rec.get("timestamp") else self._calendar.get_market_close_utc(rec["aligned_to_date"]),
+                aligned_to_date=rec["aligned_to_date"],
+                asset_id=rec["series_id"],
+                data={"value": rec.get("value")},
+                source=rec.get("source", "fred"),
+                ingestion_metadata=meta,
+            )
+            result.append(aligned)
+
+        return result
+
     def _print_schema_summary(self, records: list[AlignedRecord]) -> None:
         """Print a summary of the output schema."""
         if not records:
@@ -239,6 +338,9 @@ Examples:
   # Ingest specific tickers
   python run_ingestion.py --dataset market_prices --tickers AAPL,MSFT,GOOGL
 
+  # Ingest macro rates from FRED
+  python run_ingestion.py --dataset macro_rates --tickers DGS10,DGS2,DFF --mock
+
   # Ingest last 30 days
   python run_ingestion.py --dataset market_prices --days 30
         """,
@@ -247,7 +349,7 @@ Examples:
     parser.add_argument(
         "--dataset",
         required=True,
-        choices=["market_prices", "volatility_indices"],
+        choices=["market_prices", "volatility_indices", "macro_rates"],
         help="Dataset to ingest",
     )
 
@@ -310,6 +412,7 @@ def main():
         default_tickers = {
             "market_prices": ["SPY", "QQQ", "IWM"],
             "volatility_indices": ["^VIX", "^VIX3M", "^VVIX"],
+            "macro_rates": ["DGS10", "DGS2", "DFF", "BAMLH0A0HYM2"],
         }
         tickers = default_tickers.get(args.dataset, ["SPY"])
 
