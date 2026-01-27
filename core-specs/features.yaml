@@ -1,0 +1,395 @@
+# MEWS-FIN Feature Specifications
+# Version: 0.1.0
+# Status: CONSTITUTIONAL - Changes require versioned migration
+#
+# This file defines ALL feature contracts for the MEWS-FIN system.
+# Every feature service MUST consume these definitions.
+# Deviation from these specs breaks explainability and backtesting.
+#
+# ASSUMPTIONS:
+# - All timestamps are UTC (see time_alignment.yaml)
+# - All features are computed from FREE PUBLIC data only
+# - No lookahead bias is permitted
+# - Features are deterministic: same inputs → same outputs
+#
+# DERIVED FEATURE RULE:
+# Features with source_category: derived may ONLY depend on inputs whose
+# timestamps are ≤ the feature timestamp AND obey all publication lag rules.
+# Derived features inherit the strictest lag constraint of their inputs.
+# Violation of this rule constitutes lookahead bias.
+#
+# NORMALIZATION RULE:
+# All normalization parameters (mean, std, etc.) must be computed using
+# rolling or expanding windows only. No future data may inform normalization.
+
+schema_version: "1.0"
+last_updated: "2026-01-28"
+
+# ==============================================================================
+# FEATURE MODALITIES
+# ==============================================================================
+# Each modality has different normalization and alignment requirements.
+# Services must respect modality-specific constraints.
+
+modalities:
+  numeric:
+    description: "Continuous numeric features derived from market/macro data"
+    normalization_required: true
+    alignment: "market_close"
+    
+  sentiment:
+    description: "Sentiment scores derived from textual data"
+    normalization_required: true
+    alignment: "end_of_day"
+    value_range: [-1.0, 1.0]
+    
+  graph:
+    description: "Network/correlation-based features"
+    normalization_required: true
+    alignment: "market_close"
+
+# ==============================================================================
+# NUMERIC FEATURES
+# ==============================================================================
+# Derived from market prices, volumes, and macro indicators.
+# Primary indicators of quantitative market stress.
+
+numeric:
+
+  # ---------------------------------------------------------------------------
+  # VOLATILITY FEATURES
+  # ---------------------------------------------------------------------------
+  
+  realized_volatility_20d:
+    source_category: market_prices
+    source_fields: [close]
+    window: "20d"
+    frequency: daily
+    normalization: rolling_zscore
+    normalization_params:
+      lookback: "252d"
+      min_periods: 63
+    description: >
+      Annualized 20-day realized volatility computed as the standard deviation
+      of log returns, scaled by sqrt(252). Measures short-term market stress.
+    systemic_risk_rationale: >
+      Elevated realized volatility indicates increased uncertainty and potential
+      contagion risk. Sharp increases often precede systemic stress events.
+    output_range: [0.0, null]
+    unit: "annualized_pct"
+    
+  realized_volatility_60d:
+    source_category: market_prices
+    source_fields: [close]
+    window: "60d"
+    frequency: daily
+    normalization: rolling_zscore
+    normalization_params:
+      lookback: "252d"
+      min_periods: 63
+    description: >
+      Annualized 60-day realized volatility. Medium-term volatility regime
+      indicator less sensitive to single-day shocks.
+    systemic_risk_rationale: >
+      Persistent elevation above short-term volatility suggests regime shift
+      rather than transient stress. Useful for trend confirmation.
+    output_range: [0.0, null]
+    unit: "annualized_pct"
+
+  volatility_ratio_20d_60d:
+    source_category: derived
+    derived_from: [realized_volatility_20d, realized_volatility_60d]
+    window: "1d"
+    frequency: daily
+    normalization: none
+    description: >
+      Ratio of 20-day to 60-day realized volatility. Values > 1 indicate
+      short-term stress exceeding medium-term baseline.
+    systemic_risk_rationale: >
+      Spikes in this ratio signal acute stress episodes. Sustained elevation
+      indicates stress propagation rather than mean reversion.
+    output_range: [0.0, null]
+    unit: "ratio"
+
+  # ---------------------------------------------------------------------------
+  # DRAWDOWN FEATURES
+  # ---------------------------------------------------------------------------
+  
+  max_drawdown_20d:
+    source_category: market_prices
+    source_fields: [close]
+    window: "20d"
+    frequency: daily
+    normalization: none
+    description: >
+      Maximum peak-to-trough decline over trailing 20 days. Expressed as
+      negative percentage (e.g., -0.15 = 15% drawdown).
+    systemic_risk_rationale: >
+      Severe drawdowns trigger margin calls, forced liquidations, and
+      behavioral contagion. Threshold effects at -10%, -20% levels.
+    output_range: [-1.0, 0.0]
+    unit: "pct"
+
+  max_drawdown_60d:
+    source_category: market_prices
+    source_fields: [close]
+    window: "60d"
+    frequency: daily
+    normalization: none
+    description: >
+      Maximum peak-to-trough decline over trailing 60 days.
+    systemic_risk_rationale: >
+      Captures bear market conditions and sustained stress beyond
+      short-term corrections.
+    output_range: [-1.0, 0.0]
+    unit: "pct"
+
+  # ---------------------------------------------------------------------------
+  # LIQUIDITY FEATURES
+  # ---------------------------------------------------------------------------
+  
+  volume_zscore_20d:
+    source_category: market_prices
+    source_fields: [volume]
+    window: "20d"
+    frequency: daily
+    normalization: rolling_zscore
+    normalization_params:
+      lookback: "60d"
+      min_periods: 20
+    description: >
+      Z-score of current volume relative to 20-day trailing distribution.
+      Positive values indicate abnormally high volume.
+    systemic_risk_rationale: >
+      Volume spikes during price declines signal panic selling and potential
+      liquidity stress. Abnormally low volume may indicate market dysfunction.
+    output_range: [null, null]
+    unit: "zscore"
+
+  volume_price_divergence:
+    source_category: market_prices
+    source_fields: [close, volume]
+    window: "20d"
+    frequency: daily
+    normalization: none
+    description: >
+      Measures divergence between price trend and volume trend. Computed as
+      correlation between returns and volume changes over window.
+    systemic_risk_rationale: >
+      High volume on down days (negative divergence) indicates distribution
+      and potential for cascading sells.
+    output_range: [-1.0, 1.0]
+    unit: "correlation"
+
+  # ---------------------------------------------------------------------------
+  # MACRO STRESS FEATURES
+  # ---------------------------------------------------------------------------
+  
+  vix_level:
+    source_category: volatility_indices
+    source_fields: [close]
+    window: "1d"
+    frequency: daily
+    normalization: rolling_zscore
+    normalization_params:
+      lookback: "252d"
+      min_periods: 63
+    description: >
+      CBOE Volatility Index level. Forward-looking implied volatility
+      derived from S&P 500 options.
+    systemic_risk_rationale: >
+      VIX > 30 historically associated with crisis conditions. Captures
+      market-implied fear and hedging demand.
+    output_range: [0.0, null]
+    unit: "index_points"
+
+  vix_term_structure:
+    source_category: volatility_indices
+    source_fields: [vix_spot, vix_3m]
+    window: "1d"
+    frequency: daily
+    normalization: none
+    description: >
+      Ratio of spot VIX to 3-month VIX futures. Inverted curve (ratio > 1)
+      indicates acute near-term stress.
+    systemic_risk_rationale: >
+      Contango-to-backwardation transitions signal regime changes from
+      complacency to crisis.
+    output_range: [0.0, null]
+    unit: "ratio"
+
+  credit_spread_hy:
+    source_category: macro_rates
+    source_fields: [hy_oas, treasury_10y]
+    window: "1d"
+    frequency: daily
+    normalization: rolling_zscore
+    normalization_params:
+      lookback: "252d"
+      min_periods: 63
+    description: >
+      High-yield corporate bond spread over Treasuries. Option-adjusted
+      spread from FRED ICE BofA indices.
+    systemic_risk_rationale: >
+      Widening credit spreads indicate deteriorating risk appetite and
+      potential funding stress for leveraged entities.
+    output_range: [0.0, null]
+    unit: "basis_points"
+
+  ted_spread:
+    source_category: macro_rates
+    source_fields: [libor_3m, tbill_3m]
+    window: "1d"
+    frequency: daily
+    normalization: rolling_zscore
+    normalization_params:
+      lookback: "252d"
+      min_periods: 63
+    description: >
+      Spread between 3-month LIBOR and 3-month T-Bill. Proxy for
+      interbank lending stress and counterparty risk.
+    systemic_risk_rationale: >
+      Elevated TED spread indicates banking sector stress and potential
+      credit market dysfunction. Key 2008 crisis indicator.
+    output_range: [0.0, null]
+    unit: "basis_points"
+
+# ==============================================================================
+# SENTIMENT FEATURES
+# ==============================================================================
+# Derived from textual data via frozen FinBERT model.
+# Captures behavioral and narrative components of risk.
+
+sentiment:
+
+  news_sentiment_daily:
+    source_category: financial_news
+    source_fields: [headline, body]
+    window: "1d"
+    frequency: daily
+    normalization: none
+    model: "finbert_frozen"
+    aggregation: "volume_weighted_mean"
+    description: >
+      Daily aggregate sentiment score from financial news. Computed as
+      volume-weighted mean of article-level FinBERT scores.
+    systemic_risk_rationale: >
+      Sustained negative sentiment indicates deteriorating market narrative
+      and potential for self-fulfilling pessimism.
+    output_range: [-1.0, 1.0]
+    unit: "sentiment_score"
+
+  news_sentiment_5d:
+    source_category: financial_news
+    source_fields: [headline, body]
+    window: "5d"
+    frequency: daily
+    normalization: rolling_zscore
+    normalization_params:
+      lookback: "60d"
+      min_periods: 20
+    model: "finbert_frozen"
+    aggregation: "exponential_weighted_mean"
+    description: >
+      5-day exponentially weighted sentiment. Smoothed indicator less
+      sensitive to single-day noise.
+    systemic_risk_rationale: >
+      Persistent sentiment deterioration over multiple days indicates
+      narrative shift rather than transient reaction.
+    output_range: [-1.0, 1.0]
+    unit: "sentiment_score"
+
+  sentiment_volatility_20d:
+    source_category: derived
+    derived_from: [news_sentiment_daily]
+    window: "20d"
+    frequency: daily
+    normalization: rolling_zscore
+    normalization_params:
+      lookback: "60d"
+      min_periods: 20
+    description: >
+      Standard deviation of daily sentiment over 20 days. Measures
+      narrative uncertainty and conflicting signals.
+    systemic_risk_rationale: >
+      High sentiment volatility indicates market confusion and
+      potential for sharp directional moves on clarity.
+    output_range: [0.0, null]
+    unit: "sentiment_std"
+
+# ==============================================================================
+# GRAPH / CORRELATION FEATURES
+# ==============================================================================
+# Derived from cross-asset return correlations.
+# Captures contagion and interconnectedness dynamics.
+
+graph:
+
+  avg_pairwise_correlation_20d:
+    source_category: market_prices
+    source_fields: [close]
+    asset_universe: "sp500_constituents"
+    window: "20d"
+    frequency: daily
+    normalization: rolling_zscore
+    normalization_params:
+      lookback: "252d"
+      min_periods: 63
+    description: >
+      Average pairwise correlation of daily returns across S&P 500
+      constituents over trailing 20 days.
+    systemic_risk_rationale: >
+      Correlation spikes indicate "risk-on/risk-off" regime where
+      diversification fails and systemic risk increases.
+    output_range: [-1.0, 1.0]
+    unit: "correlation"
+
+  correlation_dispersion_20d:
+    source_category: market_prices
+    source_fields: [close]
+    asset_universe: "sp500_constituents"
+    window: "20d"
+    frequency: daily
+    normalization: rolling_zscore
+    normalization_params:
+      lookback: "252d"
+      min_periods: 63
+    description: >
+      Standard deviation of pairwise correlations. Low dispersion with
+      high average indicates uniform stress response.
+    systemic_risk_rationale: >
+      Collapsing dispersion signals market-wide contagion where
+      idiosyncratic factors become irrelevant.
+    output_range: [0.0, null]
+    unit: "correlation_std"
+
+  sector_correlation_to_market:
+    source_category: market_prices
+    source_fields: [close]
+    asset_universe: "gics_sector_etfs"
+    window: "20d"
+    frequency: daily
+    normalization: none
+    description: >
+      Vector of sector-to-market correlations. Identifies which sectors
+      are driving or diverging from market stress.
+    systemic_risk_rationale: >
+      Simultaneous high correlation across all sectors indicates
+      macro-driven stress with limited safe havens.
+    output_range: [-1.0, 1.0]
+    unit: "correlation_vector"
+
+  network_centrality_change:
+    source_category: derived
+    derived_from: [avg_pairwise_correlation_20d]
+    window: "20d"
+    frequency: daily
+    normalization: none
+    description: >
+      Change in eigenvector centrality of major assets in correlation
+      network. Identifies emerging systemic nodes.
+    systemic_risk_rationale: >
+      Rapid centrality shifts indicate contagion pathway changes and
+      potential for unexpected transmission channels.
+    output_range: [null, null]
+    unit: "centrality_delta"

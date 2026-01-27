@@ -1,0 +1,261 @@
+# MEWS-FIN Time Alignment Specification
+# Version: 0.1.0
+# Status: IMMUTABLE - This file defines temporal truth for the entire system
+#
+# This specification is the SINGLE SOURCE OF TRUTH for all temporal operations.
+# ALL services MUST conform to these rules without exception.
+# Violation of these rules invalidates backtesting and explainability.
+#
+# CRITICAL: Changes to this file require system-wide migration.
+
+schema_version: "1.0"
+last_updated: "2026-01-28"
+
+# ==============================================================================
+# GLOBAL TEMPORAL STANDARD
+# ==============================================================================
+
+global:
+  timezone: "UTC"
+  description: >
+    All timestamps in MEWS-FIN are stored and processed in UTC.
+    No local timezone conversions are permitted in core processing.
+    Display-layer timezone conversion is allowed but never persisted.
+    
+  rationale: >
+    UTC eliminates daylight saving ambiguity, ensures global consistency,
+    and prevents subtle bugs from timezone-aware datetime operations.
+
+# ==============================================================================
+# MARKET CALENDAR
+# ==============================================================================
+
+market_calendar:
+  primary_market: "NYSE"
+  
+  trading_hours:
+    open: "14:30:00Z"   # 9:30 AM ET in UTC
+    close: "21:00:00Z"  # 4:00 PM ET in UTC
+    
+  alignment_point: "close"
+  description: >
+    All daily features are aligned to NYSE market close (4:00 PM ET / 21:00 UTC).
+    This is the canonical "end of day" for all daily frequency data.
+    
+  holidays:
+    source: "pandas_market_calendars"
+    calendar: "NYSE"
+    handling: "exclude"
+    description: >
+      Market holidays are excluded from trading day sequences.
+      Features with daily frequency skip holidays entirely.
+      
+  early_close:
+    handling: "include"
+    alignment: "actual_close"
+    description: >
+      Early close days (e.g., day before Thanksgiving) use actual close time.
+      Daily features still align to that day's actual close.
+
+# ==============================================================================
+# LOOKAHEAD PREVENTION
+# ==============================================================================
+# CRITICAL: These rules prevent future information leakage.
+
+lookahead_prevention:
+  
+  fundamental_rule: >
+    NO feature computation may use information from time T+1 or later
+    when computing a feature value for time T. This is inviolable.
+    
+  point_in_time_semantics:
+    description: >
+      All feature values represent knowledge available AT that timestamp,
+      not knowledge about that timestamp available later.
+      
+    examples:
+      - correct: "Volatility computed at close T uses returns up to and including T"
+      - incorrect: "Volatility for date T computed using T+1 close"
+      
+  publication_lag:
+    description: >
+      Many data sources have publication lags. Features must respect
+      the AVAILABILITY timestamp, not the REFERENCE timestamp.
+      
+    rules:
+      market_prices:
+        lag: "0d"
+        description: "Available at market close"
+        
+      macro_rates:
+        lag: "1d"
+        description: "FRED typically publishes next business day"
+        
+      financial_news:
+        lag: "0d"
+        description: "Available at publication time"
+        
+      sentiment_scores:
+        lag: "0d"
+        description: "Computed on article ingestion"
+        
+  backtesting_rule: >
+    When backtesting, feature values must be computed using ONLY data
+    that was available at the historical timestamp. No future data
+    may be used, even if the feature definition allows it for live use.
+
+# ==============================================================================
+# CROSS-MODALITY ALIGNMENT
+# ==============================================================================
+# Rules for combining features from different data sources.
+
+cross_modality_alignment:
+  
+  canonical_timestamp: "market_close"
+  description: >
+    When combining features from different sources, all are aligned
+    to NYSE market close of the reference date.
+    
+  alignment_rules:
+    
+    market_prices:
+      raw_timestamp: "market_close"
+      alignment: "native"
+      description: "Already at market close, no adjustment needed"
+      
+    volatility_indices:
+      raw_timestamp: "market_close"
+      alignment: "native"
+      description: "VIX closes with NYSE"
+      
+    macro_rates:
+      raw_timestamp: "publication_time"
+      alignment: "assign_to_previous_close"
+      description: >
+        FRED data published during day T is aligned to close of T-1
+        to prevent lookahead. Data published after close T is aligned to T.
+      rule: >
+        if publication_time <= market_close(T):
+          assign_to = T
+        else:
+          assign_to = next_trading_day(T)
+          
+    financial_news:
+      raw_timestamp: "publication_time"
+      alignment: "assign_to_same_day_close"
+      description: >
+        News published during trading day T (at or before market close)
+        is aligned to close of T. News published after market close
+        rolls forward to the next trading day T+1.
+      rule: >
+        if publication_time <= market_close(T):  # 21:00 UTC
+          assign_to = T
+        else:
+          assign_to = next_trading_day(T)
+      clarification: >
+        The boundary is market close (21:00 UTC / 4:00 PM ET), not midnight.
+        Weekend/holiday news is assigned to the next trading day open.
+          
+    sentiment:
+      raw_timestamp: "end_of_aggregation_window"
+      alignment: "same_as_news"
+      description: "Aggregated sentiment inherits news alignment rules"
+
+# ==============================================================================
+# MISSING DATA HANDLING
+# ==============================================================================
+
+missing_data:
+  
+  philosophy: >
+    Missing data is a SIGNAL, not just a gap to fill. However, some
+    interpolation is necessary for feature computation. Rules below
+    define permitted interpolation with strict limits.
+    
+  strategies:
+    
+    forward_fill:
+      max_gap: "5 trading days"
+      applicable_to: [macro_rates, volatility_indices]
+      description: >
+        Carry forward last known value. If gap exceeds max_gap,
+        mark feature as NULL rather than extrapolating.
+      rationale: >
+        Rates change slowly; short gaps are safe to fill.
+        Long gaps indicate structural issues requiring investigation.
+        
+    exclude:
+      applicable_to: [market_prices]
+      description: >
+        Do not fill missing price data. Compute features only on
+        available data, adjusting window accordingly.
+      rationale: >
+        Missing prices usually indicate non-trading (delisting, halt).
+        Interpolation would create false signals.
+        
+    null_propagation:
+      applicable_to: [financial_news, sentiment]
+      description: >
+        If source data is missing, feature is NULL. Do not synthesize
+        sentiment from nothing.
+      rationale: >
+        Absence of news is different from neutral sentiment.
+        
+  missing_threshold:
+    description: >
+      If more than 20% of inputs for a feature are missing within
+      its lookback window, the feature value should be NULL.
+    threshold: 0.20
+
+# ==============================================================================
+# FREQUENCY ALIGNMENT
+# ==============================================================================
+
+frequency_alignment:
+  
+  supported_frequencies:
+    - daily
+    - weekly
+    - monthly
+    
+  primary_frequency: "daily"
+  
+  downsampling_rules:
+    weekly:
+      aggregation_day: "Friday"
+      method: "last_available"
+      description: "Weekly features use Friday close (or last trading day of week)"
+      
+    monthly:
+      aggregation_day: "last_trading_day"
+      method: "last_available"
+      description: "Monthly features use last trading day of calendar month"
+      
+  upsampling_rules:
+    description: >
+      Lower-frequency data (weekly, monthly) is NOT upsampled to daily.
+      Instead, it is held constant until next observation.
+    method: "step_function"
+    
+  mixing_frequencies:
+    allowed: true
+    rule: >
+      When combining features of different frequencies, lower-frequency
+      features are treated as step functions (constant between observations).
+      All features are indexed to daily timestamps.
+
+# ==============================================================================
+# TIMESTAMP PRECISION
+# ==============================================================================
+
+precision:
+  storage: "second"
+  comparison: "day"
+  description: >
+    Timestamps are stored with second precision but compared at day
+    granularity for daily features. Intraday precision preserved for
+    future potential use but not used in Phase 1 features.
+    
+  rounding:
+    rule: "truncate_to_day"
+    description: "For daily alignment, truncate time component to 00:00:00Z"

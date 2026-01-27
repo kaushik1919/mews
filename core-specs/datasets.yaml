@@ -1,0 +1,406 @@
+# MEWS-FIN Dataset Specifications
+# Version: 0.1.0
+# Status: CONSTITUTIONAL - Changes require versioned migration
+#
+# This file defines ALL dataset schemas for MEWS-FIN data ingestion.
+# Ingestion services MUST produce data conforming to these schemas.
+# Feature services MUST consume data in these formats.
+#
+# CRITICAL CONSTRAINTS:
+# - FREE PUBLIC DATA ONLY - No proprietary APIs, paid feeds, or credentials
+# - All timestamps in UTC (see time_alignment.yaml)
+# - No vendor lock-in assumptions
+# - Reproducible from public sources
+
+schema_version: "1.0"
+last_updated: "2026-01-28"
+
+# ==============================================================================
+# GLOBAL DATASET RULES
+# ==============================================================================
+
+global:
+  timestamp_format: "ISO8601"  # YYYY-MM-DDTHH:MM:SSZ
+  timezone: "UTC"
+  null_representation: null
+  encoding: "UTF-8"
+  storage_format: "parquet"  # Future phases
+  versioning:
+    strategy: "date_partitioned"
+    partition_key: "ingestion_date"
+    retention_days: null  # Indefinite for research
+
+# ==============================================================================
+# MARKET PRICES DATASET
+# ==============================================================================
+# Daily OHLCV data from free public sources.
+# Primary sources: Yahoo Finance, Stooq (backup)
+
+market_prices:
+  description: >
+    Daily Open-High-Low-Close-Volume data for equities and indices.
+    Used for volatility, drawdown, correlation, and liquidity features.
+    
+  sources:
+    primary:
+      name: "Yahoo Finance"
+      access_method: "yfinance Python library"
+      rate_limits: "Respect 2000 requests/hour guideline"
+      reliability: "Generally stable, occasional gaps"
+    backup:
+      name: "Stooq"
+      access_method: "pandas_datareader or direct CSV"
+      rate_limits: "Unspecified, use conservatively"
+      reliability: "Good for historical, may lag intraday"
+      
+  schema:
+    fields:
+      timestamp:
+        type: "datetime"
+        format: "YYYY-MM-DD"
+        timezone: "UTC"
+        description: "Trading date, aligned to market close"
+        required: true
+        
+      asset_id:
+        type: "string"
+        format: "ticker_symbol"
+        description: "Standardized ticker symbol (e.g., AAPL, ^GSPC)"
+        required: true
+        
+      open:
+        type: "float64"
+        unit: "currency"
+        description: "Opening price"
+        required: true
+        nullable: false
+        
+      high:
+        type: "float64"
+        unit: "currency"
+        description: "Highest price during session"
+        required: true
+        nullable: false
+        
+      low:
+        type: "float64"
+        unit: "currency"
+        description: "Lowest price during session"
+        required: true
+        nullable: false
+        
+      close:
+        type: "float64"
+        unit: "currency"
+        description: "Closing price (adjusted for splits)"
+        required: true
+        nullable: false
+        
+      volume:
+        type: "int64"
+        unit: "shares"
+        description: "Trading volume in shares"
+        required: true
+        nullable: false
+        
+      adjusted_close:
+        type: "float64"
+        unit: "currency"
+        description: "Close adjusted for splits and dividends"
+        required: true
+        nullable: false
+        
+    primary_key: [timestamp, asset_id]
+    
+  frequency: "daily"
+  
+  asset_universes:
+    # NOTE: Universe definitions are abstract. Concrete ticker lists are
+    # implementation details managed by ingestion services, not specs.
+    # All universes must be survivorship-aware for backtesting validity.
+    
+    large_cap_equity:
+      description: "Large-cap US equity universe (constituent-based, survivorship-aware)"
+      reference_index: "S&P 500 or equivalent"
+      update_frequency: "quarterly"
+      survivorship_handling: "point_in_time_constituents"
+      
+    sector_aggregates:
+      description: "Sector-level aggregates (classification-agnostic)"
+      granularity: "GICS sectors or equivalent"
+      note: "Implementation may use sector ETFs as proxies (e.g., XLF, XLK)"
+      
+    broad_market_indices:
+      description: "Broad market indices for benchmark and volatility reference"
+      examples: "S&P 500, Nasdaq, Russell 2000, VIX"
+      note: "Concrete tickers resolved at ingestion time"
+      
+  quality_rules:
+    - "Reject if close <= 0"
+    - "Reject if high < low"
+    - "Reject if open or close outside [low, high]"
+    - "Flag if volume = 0 (may be valid for some instruments)"
+    - "Flag gaps > 5 trading days"
+
+# ==============================================================================
+# VOLATILITY INDICES DATASET
+# ==============================================================================
+# VIX and related volatility measures from free sources.
+
+volatility_indices:
+  description: >
+    Implied volatility indices capturing market fear and hedging demand.
+    Used for forward-looking stress indicators.
+    
+  sources:
+    primary:
+      name: "Yahoo Finance"
+      access_method: "yfinance Python library"
+      tickers: ["^VIX", "^VIX3M", "^VVIX"]
+    backup:
+      name: "FRED"
+      series_ids: ["VIXCLS"]
+      
+  schema:
+    fields:
+      timestamp:
+        type: "datetime"
+        format: "YYYY-MM-DD"
+        timezone: "UTC"
+        required: true
+        
+      index_id:
+        type: "string"
+        description: "Volatility index identifier"
+        required: true
+        
+      close:
+        type: "float64"
+        unit: "index_points"
+        description: "Closing index value"
+        required: true
+        
+      open:
+        type: "float64"
+        unit: "index_points"
+        required: false
+        
+      high:
+        type: "float64"
+        unit: "index_points"
+        required: false
+        
+      low:
+        type: "float64"
+        unit: "index_points"
+        required: false
+        
+    primary_key: [timestamp, index_id]
+    
+  frequency: "daily"
+  
+  quality_rules:
+    - "Reject if close < 0"
+    - "VIX typically ranges 10-80, flag outliers > 100"
+
+# ==============================================================================
+# MACRO RATES DATASET
+# ==============================================================================
+# Interest rates, spreads, and macro indicators from FRED.
+
+macro_rates:
+  description: >
+    Macroeconomic rates and spreads from Federal Reserve Economic Data.
+    Used for credit stress and funding condition indicators.
+    
+  sources:
+    primary:
+      name: "FRED"
+      access_method: "fredapi Python library or pandas_datareader"
+      api_key: "Free registration required"
+      
+  series:
+    treasury_10y:
+      fred_id: "DGS10"
+      description: "10-Year Treasury Constant Maturity Rate"
+      unit: "percent"
+      frequency: "daily"
+      
+    treasury_2y:
+      fred_id: "DGS2"
+      description: "2-Year Treasury Constant Maturity Rate"
+      unit: "percent"
+      frequency: "daily"
+      
+    treasury_3m:
+      fred_id: "DTB3"
+      description: "3-Month Treasury Bill Secondary Market Rate"
+      unit: "percent"
+      frequency: "daily"
+      
+    fed_funds:
+      fred_id: "DFF"
+      description: "Effective Federal Funds Rate"
+      unit: "percent"
+      frequency: "daily"
+      
+    libor_3m:
+      fred_id: "USD3MTD156N"
+      description: "3-Month LIBOR (ICE)"
+      unit: "percent"
+      frequency: "daily"
+      note: "Transitioning to SOFR, monitor availability"
+      
+    sofr:
+      fred_id: "SOFR"
+      description: "Secured Overnight Financing Rate"
+      unit: "percent"
+      frequency: "daily"
+      
+    hy_oas:
+      fred_id: "BAMLH0A0HYM2"
+      description: "ICE BofA US High Yield Option-Adjusted Spread"
+      unit: "percent"
+      frequency: "daily"
+      
+    ig_oas:
+      fred_id: "BAMLC0A0CM"
+      description: "ICE BofA US Corporate Investment Grade OAS"
+      unit: "percent"
+      frequency: "daily"
+      
+    ted_spread:
+      fred_id: "TEDRATE"
+      description: "TED Spread (LIBOR - T-Bill)"
+      unit: "percent"
+      frequency: "daily"
+      note: "May have gaps as LIBOR phases out"
+      
+  schema:
+    fields:
+      timestamp:
+        type: "datetime"
+        format: "YYYY-MM-DD"
+        timezone: "UTC"
+        required: true
+        
+      series_id:
+        type: "string"
+        description: "FRED series identifier"
+        required: true
+        
+      value:
+        type: "float64"
+        description: "Rate or spread value"
+        required: true
+        nullable: true  # FRED has gaps on holidays
+        
+    primary_key: [timestamp, series_id]
+    
+  frequency: "daily"
+  
+  quality_rules:
+    - "Allow null for holidays and weekends"
+    - "Forward-fill nulls up to 5 days for features"
+    - "Flag structural breaks (e.g., LIBOR discontinuation)"
+
+# ==============================================================================
+# FINANCIAL NEWS DATASET
+# ==============================================================================
+# News articles from free public sources for sentiment analysis.
+
+financial_news:
+  description: >
+    Financial news articles for sentiment extraction via FinBERT.
+    Sources must be free, public, and reproducible.
+    
+  sources:
+    primary:
+      name: "Common Crawl News"
+      access_method: "AWS S3 public bucket or HTTP"
+      filtering: "Domain filter for financial sources"
+      lag: "1-2 days typical"
+      
+    secondary:
+      name: "Public RSS Feeds"
+      feeds:
+        - name: "Reuters Business"
+          url: "https://feeds.reuters.com/reuters/businessNews"
+        - name: "CNBC"
+          url: "https://www.cnbc.com/id/100003114/device/rss/rss.html"
+        - name: "Financial Times (free)"
+          url: "https://www.ft.com/rss/home/us"
+      note: "RSS provides headlines; full text may require crawling"
+      
+  schema:
+    fields:
+      article_id:
+        type: "string"
+        format: "uuid"
+        description: "Unique article identifier"
+        required: true
+        
+      timestamp:
+        type: "datetime"
+        format: "ISO8601"
+        timezone: "UTC"
+        description: "Publication timestamp"
+        required: true
+        
+      source:
+        type: "string"
+        description: "News source name"
+        required: true
+        
+      headline:
+        type: "string"
+        max_length: 500
+        description: "Article headline"
+        required: true
+        
+      body:
+        type: "string"
+        max_length: 50000
+        description: "Article body text"
+        required: false
+        nullable: true
+        
+      url:
+        type: "string"
+        format: "url"
+        description: "Original article URL"
+        required: true
+        
+    primary_key: [article_id]
+    
+  frequency: "continuous"
+  aggregation_frequency: "daily"
+  
+  preprocessing:
+    - "Deduplicate by headline similarity > 0.9"
+    - "Filter to English language only"
+    - "Remove articles < 50 characters"
+    - "Strip HTML tags and normalize whitespace"
+    
+  quality_rules:
+    - "Minimum 10 articles per day for valid sentiment"
+    - "Flag days with < 50 articles as low confidence"
+
+# ==============================================================================
+# DERIVED DATASETS
+# ==============================================================================
+# Computed from primary datasets, not ingested directly.
+
+derived:
+  correlation_matrices:
+    description: >
+      Rolling pairwise correlation matrices computed from market_prices.
+      Used for graph features. Computed by feature services, not ingested.
+    derived_from: ["market_prices"]
+    
+  sentiment_scores:
+    description: >
+      Article-level sentiment scores from FinBERT. Computed during
+      ingestion post-processing, not from external source.
+    derived_from: ["financial_news"]
+    model: "finbert_frozen"
