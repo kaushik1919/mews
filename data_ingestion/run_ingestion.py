@@ -18,20 +18,20 @@ import sys
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from adapters.financial_news import FinancialNewsAdapter
-from adapters.macro_rates import MacroRatesAdapter
-from adapters.market_prices import MarketPricesAdapter
-from adapters.volatility_indices import VolatilityIndicesAdapter
-from alignment import (
+from data_ingestion.adapters.financial_news import FinancialNewsAdapter
+from data_ingestion.adapters.macro_rates import MacroRatesAdapter
+from data_ingestion.adapters.market_prices import MarketPricesAdapter
+from data_ingestion.adapters.volatility_indices import VolatilityIndicesAdapter
+from data_ingestion.alignment import (
     AlignedRecord,
     ForwardFillConfig,
     NYSECalendar,
     TimeAligner,
     forward_fill_series,
 )
-from alignment.lag_rules import DatasetType
-from outputs import records_to_dataframe, write_parquet
-from schemas import SchemaValidator
+from data_ingestion.alignment.lag_rules import DatasetType
+from data_ingestion.outputs import records_to_dataframe, write_parquet
+from data_ingestion.schemas import SchemaValidator
 
 UTC = ZoneInfo("UTC")
 
@@ -257,7 +257,7 @@ class IngestionPipeline:
             })
 
         # Generate placeholder records for missing trading days
-        from alignment import generate_missing_dates
+        from data_ingestion.alignment import generate_missing_dates
 
         missing = generate_missing_dates(
             record_dicts,

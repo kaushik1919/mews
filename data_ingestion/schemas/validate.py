@@ -16,7 +16,8 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from alignment import AlignedRecord
+
+from data_ingestion.alignment import AlignedRecord
 
 # Path to core-specs (relative to repo root)
 CORE_SPECS_DIR = Path(__file__).parent.parent.parent / "core-specs"

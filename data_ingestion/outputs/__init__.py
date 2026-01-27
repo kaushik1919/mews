@@ -10,7 +10,7 @@ Output format follows core-specs/datasets.yaml:
 from pathlib import Path
 from typing import Any
 
-from alignment import AlignedRecord
+from data_ingestion.alignment import AlignedRecord
 
 # Output directory relative to data-ingestion/
 OUTPUTS_DIR = Path(__file__).parent / "datasets"

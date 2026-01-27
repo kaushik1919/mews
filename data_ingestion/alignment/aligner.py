@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any
 
-from adapters import RawRecord
+from data_ingestion.adapters import RawRecord
 
 from .calendar import UTC, NYSECalendar
 from .lag_rules import DatasetType, get_publication_lag
