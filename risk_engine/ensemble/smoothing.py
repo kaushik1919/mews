@@ -152,48 +152,85 @@ class SmoothingState:
 
 
 def apply_temporal_smoothing(
-    scores: np.ndarray | list[float],
+    scores: np.ndarray | list[float] | float | None = None,
     timestamps: np.ndarray | list[pd.Timestamp] | None = None,
     config: SmoothingConfig | None = None,
-) -> np.ndarray:
+    *,
+    current_score: float | None = None,
+    state: SmoothingState | None = None,
+) -> float | np.ndarray:
     """
-    Apply temporal smoothing to a series of risk scores.
+    Apply temporal smoothing to risk scores.
 
     CRITICAL: This is CAUSAL smoothing only - no lookahead.
     Each smoothed value uses only past and current data.
 
+    Two modes of operation:
+    1. Batch mode: Pass `scores` array, returns smoothed array
+    2. Streaming mode: Pass `current_score` and `state`, returns scalar
+
     Args:
-        scores: Array of raw risk scores (time-ordered)
+        scores: Array of raw risk scores (time-ordered) for batch mode
         timestamps: Optional timestamps for gap detection
         config: Smoothing configuration
+        current_score: Single score for streaming mode
+        state: SmoothingState for streaming mode
 
     Returns:
-        Array of smoothed risk scores (same length as input)
+        Smoothed risk score(s) - scalar float for streaming, array for batch
     """
     if config is None:
         config = SmoothingConfig()
 
-    scores = np.asarray(scores).flatten()
-    n = len(scores)
+    # Streaming mode: single score with state
+    if current_score is not None and state is not None:
+        # Normalize input to scalar float
+        current = float(current_score)
+
+        # Use state's add_observation for streaming
+        timestamp = pd.Timestamp.now() if timestamps is None else timestamps
+        if isinstance(timestamp, list):
+            timestamp = timestamp[-1] if timestamp else pd.Timestamp.now()
+
+        smoothed = state.add_observation(current, timestamp, config)
+
+        # Ensure scalar output
+        if isinstance(smoothed, np.ndarray):
+            if smoothed.size != 1:
+                raise ValueError("Temporal smoothing must return a scalar risk score")
+            smoothed = float(smoothed.item())
+        else:
+            smoothed = float(smoothed)
+
+        # Ensure output is in [0, 1]
+        smoothed = max(0.0, min(1.0, smoothed))
+        return smoothed
+
+    # Batch mode: array of scores
+    if scores is None:
+        raise ValueError("Either `scores` or `current_score` with `state` must be provided")
+
+    scores_arr = np.asarray(scores).flatten()
+    n = len(scores_arr)
 
     if n == 0:
         return np.array([])
 
     if config.method == SmoothingMethod.NONE:
-        return scores.copy()
+        return scores_arr.copy()
 
     # Create output array
     smoothed = np.zeros(n)
 
     if config.method == SmoothingMethod.EXPONENTIAL_MA:
-        smoothed = _apply_ema(scores, config)
+        smoothed = _apply_ema(scores_arr, config)
 
     elif config.method == SmoothingMethod.SIMPLE_MA:
-        smoothed = _apply_sma(scores, config)
+        smoothed = _apply_sma(scores_arr, config)
 
     # Preserve spikes if configured
     if config.preserve_spikes:
-        smoothed = _preserve_spikes(scores, smoothed, config)
+        smoothed = _preserve_spikes(scores_arr, smoothed, config)
 
     # Ensure output is in [0, 1]
     smoothed = np.clip(smoothed, 0.0, 1.0)
