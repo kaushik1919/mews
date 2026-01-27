@@ -41,6 +41,7 @@ dependencies = [
     "pyarrow>=14.0",
     "numpy>=1.24",
     "scipy>=1.10",  # For calibration (Platt scaling optimization)
+    "matplotlib>=3.6",  # For visualization module (Agg backend)
 ]
 
 [project.optional-dependencies]

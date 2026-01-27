@@ -2401,3 +2401,178 @@ jobs:
           echo "Testing CLI interface..."
           python -m pipeline.daily_run.run --mock --quiet --date 2024-01-15
           echo "CLI test - PASSED"
+
+  validate-visualization:
+    name: Validate Visualization Module
+    runs-on: ubuntu-latest
+    needs: [validate-specs, lint-python]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          
+      - name: Verify visualization module structure
+        run: |
+          echo "Verifying visualization module structure..."
+          python -c "
+          from pathlib import Path
+          
+          required_files = [
+              'visualization/__init__.py',
+              'visualization/config.py',
+              'visualization/architecture.py',
+              'visualization/features.py',
+              'visualization/risk.py',
+              'visualization/evaluation.py',
+              'visualization/captions.py',
+              'visualization/run_all.py',
+          ]
+          
+          for f in required_files:
+              path = Path(f)
+              if not path.exists():
+                  print(f'  ✗ Missing: {f}')
+                  exit(1)
+              print(f'  ✓ Found: {f}')
+          
+          print('\nVisualization module structure - VERIFIED')
+          "
+          
+      - name: Verify module imports
+        run: |
+          echo "Verifying visualization imports..."
+          python -c "
+          import matplotlib
+          matplotlib.use('Agg')
+          
+          from visualization import (
+              FIGURES_DIR,
+              COLORS,
+              SIZES,
+              ensure_dirs,
+              apply_style,
+              generate_all_architecture_plots,
+              generate_all_feature_plots,
+              generate_all_risk_plots,
+              generate_all_evaluation_plots,
+              ALL_CAPTIONS,
+              get_caption,
+          )
+          
+          print('Visualization imports - VERIFIED')
+          "
+          
+      - name: Generate mock figures
+        run: |
+          echo "Generating all figures with mock data..."
+          python -m visualization.run_all --mock --verbose
+          
+      - name: Verify generated figures
+        run: |
+          echo "Verifying generated figures..."
+          python -c "
+          from pathlib import Path
+          
+          expected_figures = [
+              'figures/architecture/mews_architecture.png',
+              'figures/features/volatility_and_drawdown_timeseries.png',
+              'figures/features/news_sentiment_vs_market.png',
+              'figures/features/avg_correlation_timeseries.png',
+              'figures/risk_engine/heuristic_risk_score.png',
+              'figures/risk_engine/ml_vs_heuristic_comparison.png',
+              'figures/risk_engine/calibration_curve.png',
+              'figures/risk_engine/ensemble_vs_components.png',
+              'figures/risk_engine/shap_global_importance.png',
+              'figures/evaluation/lead_time_bar_chart.png',
+              'figures/evaluation/false_positive_rate_by_threshold.png',
+              'figures/evaluation/false_alarm_duration.png',
+              'figures/demo/daily_risk_snapshot.png',
+          ]
+          
+          missing = []
+          for f in expected_figures:
+              path = Path(f)
+              if not path.exists():
+                  missing.append(f)
+                  print(f'  ✗ Missing: {f}')
+              else:
+                  size_kb = path.stat().st_size / 1024
+                  print(f'  ✓ Generated: {f} ({size_kb:.1f} KB)')
+          
+          if missing:
+              print(f'\n{len(missing)} figures missing!')
+              exit(1)
+          
+          print(f'\nAll {len(expected_figures)} figures generated successfully')
+          "
+          
+      - name: Verify captions exist
+        run: |
+          echo "Verifying figure captions..."
+          python -c "
+          from visualization.captions import ALL_CAPTIONS, get_caption
+          
+          expected = 13
+          actual = len(ALL_CAPTIONS)
+          
+          print(f'Captions defined: {actual}')
+          
+          if actual < expected:
+              print(f'Warning: Expected at least {expected} captions, got {actual}')
+          
+          # Test get_caption function
+          caption = get_caption('mews_architecture.png')
+          if not caption:
+              print('Error: get_caption() returned empty for known figure')
+              exit(1)
+          
+          print('Figure captions - VERIFIED')
+          "
+          
+      - name: Test deterministic output
+        run: |
+          echo "Verifying deterministic figure generation..."
+          python -c "
+          import matplotlib
+          matplotlib.use('Agg')
+          
+          import hashlib
+          from pathlib import Path
+          from visualization import ensure_dirs, apply_style
+          from visualization.features import generate_all_feature_plots
+          
+          ensure_dirs()
+          apply_style()
+          
+          # Generate twice
+          paths1 = generate_all_feature_plots(mock=True)
+          hashes1 = {}
+          for p in paths1:
+              with open(p, 'rb') as f:
+                  hashes1[p.name] = hashlib.md5(f.read()).hexdigest()
+          
+          paths2 = generate_all_feature_plots(mock=True)
+          hashes2 = {}
+          for p in paths2:
+              with open(p, 'rb') as f:
+                  hashes2[p.name] = hashlib.md5(f.read()).hexdigest()
+          
+          # Compare hashes
+          for name in hashes1:
+              if hashes1[name] != hashes2[name]:
+                  print(f'  ✗ Non-deterministic: {name}')
+                  exit(1)
+              print(f'  ✓ Deterministic: {name}')
+          
+          print('\nDeterministic figure generation - VERIFIED')
+          "
