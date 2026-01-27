@@ -1,5 +1,5 @@
 # MEWS-FIN: Market Risk Early Warning System
-# Phase 2: Data ingestion and time alignment
+# Phase 3.0: Numeric feature computation
 
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mews-fin"
-version = "0.2.0"
+version = "0.3.0"
 description = "Research-grade Market Risk Early Warning System using free public data"
 readme = "README.md"
 license = {text = "MIT"}
@@ -34,11 +34,12 @@ classifiers = [
     "Typing :: Typed",
 ]
 
-# Phase 2: Dependencies for data ingestion
+# Phase 3.0: Dependencies for data ingestion and feature computation
 dependencies = [
     "pyyaml>=6.0",
     "pandas>=2.0",
     "pyarrow>=14.0",
+    "numpy>=1.24",
 ]
 
 [project.optional-dependencies]
@@ -76,7 +77,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["mews_fin", "data_ingestion"]
+known-first-party = ["mews_fin", "data_ingestion", "feature_services"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
