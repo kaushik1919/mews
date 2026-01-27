@@ -21,7 +21,6 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-
 # Minimum number of assets for meaningful correlation analysis
 MIN_ASSETS_FOR_CORRELATION = 3
 
@@ -150,7 +149,7 @@ def compute_avg_pairwise_correlation(corr: pd.DataFrame) -> float | None:
     Economic interpretation:
         This measures overall market coupling. High values indicate
         "risk-on/risk-off" regimes where diversification fails.
-        
+
         Typical values:
         - 0.2-0.4: Normal market conditions
         - 0.5-0.7: Elevated stress
@@ -182,7 +181,7 @@ def compute_correlation_dispersion(corr: pd.DataFrame) -> float | None:
     Economic interpretation:
         Low dispersion with high average = uniform stress response
         High dispersion = heterogeneous behavior (some sectors diverge)
-        
+
         Collapsing dispersion during stress indicates market-wide
         contagion where idiosyncratic factors become irrelevant.
     """

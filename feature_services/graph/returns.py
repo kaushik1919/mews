@@ -199,7 +199,7 @@ def compute_market_returns(
 
     Mathematical definition:
         r_market,t = sum(w_i * r_i,t)
-        
+
         If equal-weighted: w_i = 1/N for all i
 
     Economic interpretation:

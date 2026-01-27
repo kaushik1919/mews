@@ -20,7 +20,6 @@ Public API:
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Any
 
 import pandas as pd
@@ -48,7 +47,6 @@ from feature_services.graph.validate import (
     validate_input_market_prices,
     validate_no_future_data,
 )
-
 
 # Default window sizes
 CORRELATION_WINDOW_DAYS = 20
@@ -111,7 +109,7 @@ def compute_graph_features(
         - No forward-fill, no imputation
     """
     # Initialize null features
-    null_features = {name: None for name in get_phase_32_feature_names()}
+    null_features = dict.fromkeys(get_phase_32_feature_names())
 
     # Validate inputs
     valid, errors = validate_input_market_prices(market_prices)

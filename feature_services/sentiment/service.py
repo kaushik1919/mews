@@ -134,7 +134,7 @@ def compute_sentiment_features(
 
     # Handle empty DataFrame
     if news_events is None or news_events.empty:
-        features = {name: None for name in get_phase_31_feature_names()}
+        features = dict.fromkeys(get_phase_31_feature_names())
         return SentimentFeatureSnapshot(
             timestamp=as_of,
             features=features,
@@ -152,7 +152,7 @@ def compute_sentiment_features(
             raise ValueError(f"Lookahead bias detected: {errors}")
 
     if filtered_news.empty:
-        features = {name: None for name in get_phase_31_feature_names()}
+        features = dict.fromkeys(get_phase_31_feature_names())
         return SentimentFeatureSnapshot(
             timestamp=as_of,
             features=features,

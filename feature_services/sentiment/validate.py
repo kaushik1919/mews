@@ -17,7 +17,6 @@ from typing import Any
 import pandas as pd
 import yaml
 
-
 # Path to core-specs
 CORE_SPECS_DIR = Path(__file__).parent.parent.parent / "core-specs"
 FEATURES_YAML = CORE_SPECS_DIR / "features.yaml"

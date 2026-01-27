@@ -21,7 +21,6 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-
 # Threshold for edge inclusion (correlations below this are weak links)
 DEFAULT_EDGE_THRESHOLD = 0.0  # Include all edges by default
 
@@ -57,7 +56,7 @@ def compute_degree_centrality(
     Economic interpretation:
         High centrality = asset strongly correlated with many others.
         These are potential contagion hubs. If they move, the market moves.
-        
+
         Low centrality = more independent asset, potential diversifier.
     """
     if corr is None or corr.empty:
@@ -109,12 +108,12 @@ def compute_centrality_change(
     Economic interpretation:
         High centrality change = network structure is shifting.
         Assets are becoming more/less connected to the system.
-        
+
         Rapid shifts indicate:
         - New contagion pathways emerging
         - Previous hubs losing influence
         - Regime change in market structure
-        
+
         Stable centrality = consistent market structure.
     """
     if current_centrality.empty or previous_centrality.empty:
