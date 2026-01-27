@@ -27,6 +27,7 @@ if str(_SCRIPT_DIR) not in sys.path:
 
 # Now import using relative package structure
 from adapters.market_prices import MarketPricesAdapter
+from adapters.volatility_indices import VolatilityIndicesAdapter
 from alignment import AlignedRecord, NYSECalendar, TimeAligner
 from alignment.lag_rules import DatasetType
 from outputs import records_to_dataframe, write_parquet
@@ -73,8 +74,8 @@ class IngestionPipeline:
         """Get the appropriate adapter for the dataset."""
         adapters = {
             "market_prices": MarketPricesAdapter(use_mock=self._use_mock),
+            "volatility_indices": VolatilityIndicesAdapter(use_mock=self._use_mock),
             # Future: Add other adapters here
-            # "volatility_indices": VolatilityIndicesAdapter(...),
             # "macro_rates": MacroRatesAdapter(...),
         }
 
@@ -219,7 +220,7 @@ class IngestionPipeline:
             return
 
         # Get DataFrame to show structure
-        df = records_to_dataframe(records)
+        df = records_to_dataframe(records, dataset_name=self._dataset_name)
         print(f"  Columns: {list(df.columns)}")
         print("  Dtypes:")
         for col, dtype in df.dtypes.items():
@@ -254,15 +255,15 @@ Examples:
     parser.add_argument(
         "--dataset",
         required=True,
-        choices=["market_prices"],  # Extend as adapters are added
+        choices=["market_prices", "volatility_indices"],
         help="Dataset to ingest",
     )
 
     parser.add_argument(
         "--tickers",
         type=str,
-        default="SPY,QQQ,IWM",
-        help="Comma-separated list of tickers (default: SPY,QQQ,IWM)",
+        default=None,  # Default depends on dataset
+        help="Comma-separated list of tickers/indices (default: dataset-specific)",
     )
 
     parser.add_argument(
@@ -309,8 +310,16 @@ def main():
     """Main entry point."""
     args = parse_args()
 
-    # Parse tickers
-    tickers = [t.strip() for t in args.tickers.split(",")]
+    # Parse tickers with dataset-specific defaults
+    if args.tickers:
+        tickers = [t.strip() for t in args.tickers.split(",")]
+    else:
+        # Dataset-specific defaults (configuration-driven)
+        default_tickers = {
+            "market_prices": ["SPY", "QQQ", "IWM"],
+            "volatility_indices": ["^VIX", "^VIX3M", "^VVIX"],
+        }
+        tickers = default_tickers.get(args.dataset, ["SPY"])
 
     # Parse dates
     end_date = datetime.now(UTC)

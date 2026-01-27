@@ -41,12 +41,16 @@ def get_output_path(
     return OUTPUTS_DIR / dataset_name / version / filename
 
 
-def records_to_dataframe(records: list[AlignedRecord]) -> Any:
+def records_to_dataframe(
+    records: list[AlignedRecord],
+    dataset_name: str = "market_prices",
+) -> Any:
     """
     Convert aligned records to a pandas DataFrame.
 
     Args:
         records: List of aligned records
+        dataset_name: Name of dataset (for correct id field name)
 
     Returns:
         pandas DataFrame with flattened structure
@@ -59,11 +63,20 @@ def records_to_dataframe(records: list[AlignedRecord]) -> Any:
             "Install with: pip install pandas"
         ) from e
 
+    # Determine the correct id field name per datasets.yaml
+    id_field_mapping = {
+        "market_prices": "asset_id",
+        "volatility_indices": "index_id",
+        "macro_rates": "series_id",
+        "financial_news": "article_id",
+    }
+    id_field_name = id_field_mapping.get(dataset_name, "asset_id")
+
     rows = []
     for record in records:
         row = {
             "timestamp": record.timestamp,
-            "asset_id": record.asset_id,
+            id_field_name: record.asset_id,  # Map to correct field name
             "source": record.source,
             **record.data,
         }
@@ -75,9 +88,9 @@ def records_to_dataframe(records: list[AlignedRecord]) -> Any:
     if "volume" in df.columns:
         df["volume"] = df["volume"].astype("int64")
 
-    # Sort by timestamp and asset_id (primary key)
+    # Sort by timestamp and id field (primary key)
     if len(df) > 0:
-        df = df.sort_values(["timestamp", "asset_id"]).reset_index(drop=True)
+        df = df.sort_values(["timestamp", id_field_name]).reset_index(drop=True)
 
     return df
 
@@ -109,7 +122,7 @@ def write_parquet(
     output_path = get_output_path(dataset_name, version)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    df = records_to_dataframe(records)
+    df = records_to_dataframe(records, dataset_name=dataset_name)
 
     # Write Parquet with pyarrow
     df.to_parquet(output_path, engine="pyarrow", index=False)

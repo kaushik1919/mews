@@ -134,6 +134,8 @@ jobs:
             "core-specs/risk_score.yaml"
             "data-ingestion/run_ingestion.py"
             "data-ingestion/adapters/__init__.py"
+            "data-ingestion/adapters/market_prices/__init__.py"
+            "data-ingestion/adapters/volatility_indices/__init__.py"
             "data-ingestion/alignment/__init__.py"
             "data-ingestion/schemas/__init__.py"
           )
@@ -173,9 +175,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install .  # Install from pyproject.toml
           
-      - name: Run ingestion dry-run with mock data
+      - name: Run market_prices ingestion dry-run
         run: |
-          echo "Running ingestion pipeline in dry-run mode..."
+          echo "Running market_prices ingestion in dry-run mode..."
           cd data-ingestion
           python run_ingestion.py \
             --dataset market_prices \
@@ -184,8 +186,21 @@ jobs:
             --fallback-calendar \
             --tickers SPY,QQQ \
             --days 5
-          echo "Ingestion dry-run complete."
-          
+          echo "market_prices dry-run complete."
+
+      - name: Run volatility_indices ingestion dry-run
+        run: |
+          echo "Running volatility_indices ingestion in dry-run mode..."
+          cd data-ingestion
+          python run_ingestion.py \
+            --dataset volatility_indices \
+            --mock \
+            --dry-run \
+            --fallback-calendar \
+            --tickers ^VIX,^VIX3M \
+            --days 5
+          echo "volatility_indices dry-run complete."
+
       - name: Validate schema loading
         run: |
           echo "Validating schema loading from core-specs..."
@@ -193,14 +208,22 @@ jobs:
           import sys
           sys.path.insert(0, 'data-ingestion')
           from schemas import load_dataset_schema
-          
+
+          # Validate market_prices schema
           schema = load_dataset_schema('market_prices')
           print(f'Loaded market_prices schema')
           print(f'  Fields: {list(schema[\"schema\"][\"fields\"].keys())}')
           print(f'  Frequency: {schema[\"frequency\"]}')
-          print('Schema validation passed.')
+
+          # Validate volatility_indices schema
+          schema = load_dataset_schema('volatility_indices')
+          print(f'Loaded volatility_indices schema')
+          print(f'  Fields: {list(schema[\"schema\"][\"fields\"].keys())}')
+          print(f'  Frequency: {schema[\"frequency\"]}')
+
+          print('All schema validations passed.')
           "
-          
+
       - name: Validate time alignment rules
         run: |
           echo "Validating time alignment module..."
@@ -209,19 +232,25 @@ jobs:
           sys.path.insert(0, 'data-ingestion')
           from alignment import TimeAligner, NYSECalendar
           from alignment.lag_rules import DatasetType, get_publication_lag
-          
-          # Check lag rules match spec
+
+          # Check market_prices lag rules
           lag = get_publication_lag(DatasetType.MARKET_PRICES)
           assert lag.lag_days == 0, 'market_prices should have 0d lag'
           assert lag.alignment_mode == 'native', 'market_prices should use native alignment'
           print(f'market_prices lag rule: {lag}')
-          
+
+          # Check volatility_indices lag rules
+          lag = get_publication_lag(DatasetType.VOLATILITY_INDICES)
+          assert lag.lag_days == 0, 'volatility_indices should have 0d lag'
+          assert lag.alignment_mode == 'native', 'volatility_indices should use native alignment'
+          print(f'volatility_indices lag rule: {lag}')
+
           # Check calendar
           cal = NYSECalendar(use_fallback=True)
           from datetime import date
           assert cal.is_trading_day(date(2024, 1, 15))  # Monday
           assert not cal.is_trading_day(date(2024, 1, 13))  # Saturday
           print('Calendar validation passed.')
-          
+
           print('Time alignment validation complete.')
           "

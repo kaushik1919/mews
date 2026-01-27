@@ -126,6 +126,21 @@ class SchemaValidator:
             for name, spec in self._field_specs.items()
         }
 
+    def _get_id_field_name(self) -> str:
+        """Get the identifier field name for this dataset.
+
+        Different datasets use different id field names:
+        - market_prices: asset_id
+        - volatility_indices: index_id
+        """
+        id_field_mapping = {
+            "market_prices": "asset_id",
+            "volatility_indices": "index_id",
+            "macro_rates": "series_id",
+            "financial_news": "article_id",
+        }
+        return id_field_mapping.get(self._dataset_name, "asset_id")
+
     def validate(self, record: AlignedRecord) -> ValidationResult:
         """
         Validate an aligned record against the schema.
@@ -140,9 +155,11 @@ class SchemaValidator:
         warnings: list[str] = []
 
         # Combine record data with metadata fields
+        # Handle dataset-specific id field names (asset_id vs index_id)
+        id_field = self._get_id_field_name()
         full_data = {
             "timestamp": record.timestamp,
-            "asset_id": record.asset_id,
+            id_field: record.asset_id,  # Map internal asset_id to schema field name
             **record.data,
         }
 
@@ -252,11 +269,15 @@ class SchemaValidator:
         - Reject if high < low
         - Reject if open or close outside [low, high]
         - Flag if volume = 0
+
+        For volatility_indices:
+        - Reject if close < 0
+        - Flag if close > 100 (unusual for VIX)
         """
         errors = []
         warnings = []
 
-        # Only apply rules if we have the necessary fields
+        # Market prices quality rules
         if self._dataset_name == "market_prices":
             close = data.get("close")
             high = data.get("high")
@@ -301,6 +322,22 @@ class SchemaValidator:
             # Flag (warn) if volume = 0
             if volume is not None and volume == 0:
                 warnings.append("volume is 0 (may be valid for some instruments)")
+
+        # Volatility indices quality rules
+        elif self._dataset_name == "volatility_indices":
+            close = data.get("close")
+
+            # Reject if close < 0
+            if close is not None and close < 0:
+                errors.append(ValidationError(
+                    field="close",
+                    message="close must be >= 0",
+                    value=close,
+                ))
+
+            # Flag if close > 100 (unusual for VIX, but can happen in crisis)
+            if close is not None and close > 100:
+                warnings.append(f"VIX close={close} is unusually high (>100)")
 
         return {"errors": errors, "warnings": warnings}
 
