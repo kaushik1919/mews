@@ -84,3 +84,10 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short"
+
+[tool.setuptools]
+packages = [
+    "data_ingestion",
+    "feature_services",
+    "risk_engine"
+]
