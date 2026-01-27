@@ -148,6 +148,12 @@ jobs:
             "feature_services/numeric/drawdown.py"
             "feature_services/numeric/liquidity.py"
             "feature_services/numeric/validate.py"
+            "feature_services/sentiment/__init__.py"
+            "feature_services/sentiment/service.py"
+            "feature_services/sentiment/inference.py"
+            "feature_services/sentiment/aggregation.py"
+            "feature_services/sentiment/mapping.py"
+            "feature_services/sentiment/validate.py"
           )
           
           missing=0
@@ -703,4 +709,215 @@ jobs:
               assert in_spec, f'{name} not in features.yaml'
 
           print('\\nSpec compliance - VERIFIED')
+          "
+
+  validate-sentiment:
+    name: Validate Sentiment Feature Service
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .  # Install from pyproject.toml
+
+      - name: Import sentiment service
+        run: |
+          echo "Verifying sentiment service can be imported..."
+          python -c "
+          from feature_services.sentiment import compute_sentiment_features, SentimentFeatureSnapshot
+          from feature_services.sentiment.validate import get_phase_31_feature_names
+
+          features = get_phase_31_feature_names()
+          print(f'Phase 3.1 features: {features}')
+          print(f'Feature count: {len(features)}')
+          assert len(features) == 3, 'Expected 3 Phase 3.1 features'
+          print('Sentiment service import successful.')
+          "
+
+      - name: Validate sentiment computation on mock data
+        run: |
+          echo "Testing sentiment computation with mock news data..."
+          python -c "
+          import pandas as pd
+          import numpy as np
+          from datetime import datetime, timedelta
+          from zoneinfo import ZoneInfo
+
+          from feature_services.sentiment import compute_sentiment_features
+
+          utc = ZoneInfo('UTC')
+
+          # Generate 30 days of mock news data
+          np.random.seed(42)
+          articles = []
+          base_date = datetime(2024, 1, 15, 21, 0, 0, tzinfo=utc)
+
+          for day_offset in range(30):
+              day = base_date - timedelta(days=day_offset)
+              # 3-8 articles per day
+              num_articles = np.random.randint(3, 9)
+              for i in range(num_articles):
+                  articles.append({
+                      'article_id': f'article_{day_offset}_{i}',
+                      'timestamp': day,
+                      'headline': f'Market news headline {day_offset}-{i}',
+                      'body': f'Article body content for day {day_offset}.',
+                      'source': 'mock',
+                  })
+
+          news_events = pd.DataFrame(articles)
+
+          # Compute features
+          as_of = pd.Timestamp('2024-01-15 21:00:00', tz='UTC')
+          snapshot = compute_sentiment_features(
+              news_events=news_events,
+              as_of=as_of,
+              use_mock_inference=True,
+          )
+
+          print('Sentiment feature snapshot:')
+          for name, value in snapshot.features.items():
+              if value is not None:
+                  print(f'  {name}: {value:.4f}')
+              else:
+                  print(f'  {name}: null')
+
+          # Verify no NaNs
+          import math
+          for name, value in snapshot.features.items():
+              if value is not None:
+                  assert not math.isnan(value), f'{name} has NaN value'
+
+          print(f'\\nArticle count: {snapshot.article_count}')
+          print(f'Complete: {snapshot.is_complete}')
+
+          print('\\nSentiment computation validation complete.')
+          "
+
+      - name: Validate no future article usage
+        run: |
+          echo "Verifying no lookahead bias in sentiment..."
+          python -c "
+          import pandas as pd
+          import numpy as np
+          from datetime import datetime, timedelta
+          from zoneinfo import ZoneInfo
+
+          from feature_services.sentiment import compute_sentiment_features
+
+          utc = ZoneInfo('UTC')
+
+          # Create articles spanning past and future
+          as_of = pd.Timestamp('2024-01-15 21:00:00', tz='UTC')
+
+          articles = []
+          # Past articles (should be included)
+          for i in range(10):
+              articles.append({
+                  'article_id': f'past_{i}',
+                  'timestamp': as_of - timedelta(days=i),
+                  'headline': f'Past headline {i}',
+                  'body': 'Past body',
+              })
+
+          # Future articles (should NOT be included)
+          for i in range(5):
+              articles.append({
+                  'article_id': f'future_{i}',
+                  'timestamp': as_of + timedelta(days=i+1),
+                  'headline': f'Future headline {i}',
+                  'body': 'Future body',
+              })
+
+          news_events = pd.DataFrame(articles)
+
+          # Compute features
+          snapshot = compute_sentiment_features(
+              news_events=news_events,
+              as_of=as_of,
+              use_mock_inference=True,
+          )
+
+          # Should only use past articles
+          assert snapshot.article_count == 10, f'Expected 10 articles, got {snapshot.article_count}'
+
+          print('No future article usage - VERIFIED')
+          print(f'Used {snapshot.article_count} past articles, excluded 5 future articles')
+          "
+
+      - name: Validate deterministic inference
+        run: |
+          echo "Verifying deterministic sentiment inference..."
+          python -c "
+          import pandas as pd
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+
+          from feature_services.sentiment import compute_sentiment_features
+
+          utc = ZoneInfo('UTC')
+
+          # Create fixed test data
+          articles = [
+              {'article_id': 'a1', 'timestamp': pd.Timestamp('2024-01-15 21:00:00', tz='UTC'), 'headline': 'Test headline 1', 'body': 'Body 1'},
+              {'article_id': 'a2', 'timestamp': pd.Timestamp('2024-01-14 21:00:00', tz='UTC'), 'headline': 'Test headline 2', 'body': 'Body 2'},
+              {'article_id': 'a3', 'timestamp': pd.Timestamp('2024-01-13 21:00:00', tz='UTC'), 'headline': 'Test headline 3', 'body': 'Body 3'},
+          ]
+          news_events = pd.DataFrame(articles)
+          as_of = pd.Timestamp('2024-01-15 21:00:00', tz='UTC')
+
+          # Compute features multiple times
+          results = []
+          for _ in range(3):
+              snapshot = compute_sentiment_features(news_events, as_of, use_mock_inference=True)
+              results.append(snapshot.features.copy())
+
+          # All results must be identical
+          for i in range(1, len(results)):
+              for name in results[0]:
+                  v0, vi = results[0][name], results[i][name]
+                  if v0 is None:
+                      assert vi is None, f'{name} differs between runs'
+                  else:
+                      assert abs(v0 - vi) < 1e-15, f'{name} differs between runs'
+
+          print('Deterministic inference - VERIFIED')
+          print('All 3 runs produced identical results.')
+          "
+
+      - name: Validate sentiment spec compliance
+        run: |
+          echo "Verifying sentiment spec compliance..."
+          python -c "
+          from feature_services.sentiment.validate import (
+              get_phase_31_feature_names,
+              get_sentiment_feature_names,
+              load_feature_spec,
+          )
+
+          # Load spec
+          spec = load_feature_spec()
+          print(f'Spec version: {spec.get(\"schema_version\")}')
+
+          # Verify Phase 3.1 features exist in spec
+          phase_31 = get_phase_31_feature_names()
+          all_sentiment = get_sentiment_feature_names()
+
+          print(f'\\nPhase 3.1 features ({len(phase_31)}):')
+          for name in phase_31:
+              in_spec = name in all_sentiment
+              status = '✓' if in_spec else '✗'
+              print(f'  {status} {name}')
+              assert in_spec, f'{name} not in features.yaml sentiment section'
+
+          print('\\nSentiment spec compliance - VERIFIED')
           "
