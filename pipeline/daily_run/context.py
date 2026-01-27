@@ -132,6 +132,9 @@ class PipelineContext:
     warnings: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
+    # Verbose output flag
+    verbose: bool = False
+
     @property
     def is_success(self) -> bool:
         """Check if pipeline completed successfully."""
@@ -185,6 +188,7 @@ def create_context(
     run_date: date | None = None,
     as_of: pd.Timestamp | None = None,
     config: PipelineConfig | None = None,
+    verbose: bool = False,
 ) -> PipelineContext:
     """
     Create a new pipeline context.
@@ -193,6 +197,7 @@ def create_context(
         run_date: Date for the run (defaults to today)
         as_of: Point-in-time timestamp (defaults to run_date 21:00 UTC)
         config: Pipeline configuration (defaults to DEFAULT_CONFIG)
+        verbose: Enable verbose execution output
 
     Returns:
         New PipelineContext ready for execution
@@ -225,4 +230,5 @@ def create_context(
         run_date=run_date,
         as_of=as_of,
         config=config,
+        verbose=verbose,
     )

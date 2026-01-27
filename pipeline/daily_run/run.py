@@ -42,16 +42,24 @@ def run_pipeline(ctx: PipelineContext) -> PipelineContext:
         Completed context with all results
     """
     # Step 1: Ingestion
+    if ctx.verbose:
+        print("[MEWS] Running ingestion...")
     run_ingestion(ctx)
 
     # Step 2: Features
+    if ctx.verbose:
+        print("[MEWS] Computing features...")
     run_features(ctx)
 
     # Step 3: Risk
+    if ctx.verbose:
+        print("[MEWS] Scoring risk...")
     run_risk(ctx)
 
     # Mark complete
     ctx.completed_at = datetime.now(timezone.utc)
+    if ctx.verbose:
+        print(f"[MEWS] Pipeline complete in {ctx.duration_seconds:.2f}s")
 
     return ctx
 
@@ -82,6 +90,12 @@ def main(args: list[str] | None = None) -> int:
         "--mock",
         action="store_true",
         help="Run in mock mode with synthetic data",
+    )
+
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose execution output",
     )
 
     parser.add_argument(
@@ -116,8 +130,14 @@ def main(args: list[str] | None = None) -> int:
     else:
         config = DEFAULT_CONFIG
 
+    # Resolve verbose flag (--quiet overrides --verbose)
+    if parsed.quiet:
+        verbose = False
+    else:
+        verbose = parsed.verbose
+
     # Create context
-    ctx = create_context(run_date=run_date, config=config)
+    ctx = create_context(run_date=run_date, config=config, verbose=verbose)
 
     try:
         # Run pipeline
