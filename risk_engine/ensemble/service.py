@@ -270,6 +270,10 @@ def compute_ensemble_risk(
         n_top_features=config.n_top_features,
     )
 
+    # Clamp final score to [0, 1] to handle floating-point drift
+    final_score = float(final_score)
+    final_score = min(max(final_score, 0.0), 1.0)
+
     # Validate output
     validation = validate_ensemble_output(
         score=final_score,
@@ -280,10 +284,11 @@ def compute_ensemble_risk(
         raw_score=raw_ensemble if calibrator is not None else None,
     )
 
-    # Add validation warnings
+    # Raise AssertionError on validation failure with full context
     if not validation.is_valid:
-        for failure in validation.critical_failures:
-            warnings.append(f"VALIDATION: {failure}")
+        raise AssertionError(
+            f"Ensemble validation failed: {validation.critical_failures}"
+        )
 
     return EnsembleRiskSnapshot(
         risk_score=final_score,
@@ -426,6 +431,11 @@ def compute_ensemble_risk_from_scores(
         smoothed = calibrated
 
     final_score = smoothed
+
+    # Clamp final score to [0, 1] to handle floating-point drift
+    final_score = float(final_score)
+    final_score = min(max(final_score, 0.0), 1.0)
+
     regime = score_to_regime(final_score)
 
     # Generate explanation
@@ -450,6 +460,12 @@ def compute_ensemble_risk_from_scores(
         calibrated=calibrator is not None,
         raw_score=raw_ensemble if calibrator is not None else None,
     )
+
+    # Raise AssertionError on validation failure with full context
+    if not validation.is_valid:
+        raise AssertionError(
+            f"Ensemble validation failed: {validation.critical_failures}"
+        )
 
     return EnsembleRiskSnapshot(
         risk_score=final_score,

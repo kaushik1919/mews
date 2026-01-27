@@ -25,12 +25,16 @@ import numpy as np
 from .weights import EnsembleWeights
 
 # Regime boundaries from risk_score.yaml
+# Using half-open intervals: [low, high) except EXTREME_RISK which is [0.75, 1.0]
 REGIME_BOUNDS: dict[str, tuple[float, float]] = {
     "LOW_RISK": (0.0, 0.25),
     "MODERATE_RISK": (0.25, 0.50),
     "HIGH_RISK": (0.50, 0.75),
     "EXTREME_RISK": (0.75, 1.0),
 }
+
+# Floating-point tolerance for score comparisons
+SCORE_TOLERANCE = 1e-9
 
 
 @dataclass
@@ -140,8 +144,12 @@ def validate_ensemble_output(
 
 
 def _validate_score_bounds(score: float) -> ValidationResult:
-    """Check score is in [0, 1]."""
-    if 0.0 <= score <= 1.0:
+    """Check score is in [0, 1] with floating-point tolerance."""
+    # Normalize to float and apply tolerance
+    score = float(score)
+
+    # Check with tolerance for floating-point drift
+    if -SCORE_TOLERANCE <= score <= 1.0 + SCORE_TOLERANCE:
         return ValidationResult(
             is_valid=True,
             check_name="score_bounds",
@@ -204,6 +212,9 @@ def _validate_regime(regime: str) -> ValidationResult:
 
 def _validate_regime_consistency(score: float, regime: str) -> ValidationResult:
     """Check score falls in correct regime band."""
+    # Normalize score
+    score = float(score)
+
     if regime not in REGIME_BOUNDS:
         return ValidationResult(
             is_valid=False,
@@ -212,24 +223,19 @@ def _validate_regime_consistency(score: float, regime: str) -> ValidationResult:
             details={"score": score, "regime": regime},
         )
 
-    low, high = REGIME_BOUNDS[regime]
+    # Use the same regime mapping function to determine expected regime
+    expected = _score_to_regime(score)
 
-    # Handle boundary conditions (score exactly on boundary)
-    in_range = low <= score <= high
-
-    # Special case: boundary scores can belong to either regime
-    if score == high and regime != "EXTREME_RISK":
-        in_range = True  # Upper boundary belongs to current regime
-
-    if in_range:
+    # Regime is consistent if it matches the expected regime from score_to_regime
+    if regime == expected:
+        low, high = REGIME_BOUNDS[regime]
         return ValidationResult(
             is_valid=True,
             check_name="regime_consistency",
-            message=f"Score {score:.4f} consistent with regime {regime} [{low}, {high}]",
+            message=f"Score {score:.4f} consistent with regime {regime} [{low}, {high})",
             details={"score": score, "regime": regime, "bounds": (low, high)},
         )
     else:
-        expected = _score_to_regime(score)
         return ValidationResult(
             is_valid=False,
             check_name="regime_consistency",
