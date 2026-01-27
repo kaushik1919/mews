@@ -189,6 +189,15 @@ jobs:
             "risk_engine/evaluation/false_positives.py"
             "risk_engine/evaluation/compare.py"
             "risk_engine/evaluation/report.py"
+            "pipeline/__init__.py"
+            "pipeline/daily_run/__init__.py"
+            "pipeline/daily_run/config.py"
+            "pipeline/daily_run/context.py"
+            "pipeline/daily_run/ingestion.py"
+            "pipeline/daily_run/features.py"
+            "pipeline/daily_run/risk.py"
+            "pipeline/daily_run/report.py"
+            "pipeline/daily_run/run.py"
           )
           
           missing=0
@@ -2278,3 +2287,117 @@ jobs:
 
           print('\\nOutput structure validation - PASSED')
           "
+
+  validate-pipeline:
+    name: Validate Daily Pipeline (Phase 5A)
+    runs-on: ubuntu-latest
+    needs: [lint-python]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          
+      - name: Import pipeline modules
+        run: |
+          echo "Verifying pipeline modules can be imported..."
+          python -c "
+          from pipeline.daily_run import (
+              PipelineConfig,
+              DEFAULT_CONFIG,
+              MOCK_CONFIG,
+              PipelineContext,
+              create_context,
+              run_pipeline,
+              run_ingestion,
+              run_features,
+              run_risk,
+              generate_report,
+              print_report,
+              main,
+          )
+          print('All pipeline imports successful')
+          "
+          
+      - name: Run pipeline in mock mode
+        run: |
+          echo "Running pipeline in mock mode..."
+          python -m pipeline.daily_run.run --mock --date 2024-01-15
+          
+      - name: Validate pipeline output structure
+        run: |
+          echo "Validating pipeline output..."
+          python -c "
+          from datetime import date
+          from pipeline.daily_run import (
+              create_context,
+              run_pipeline,
+              generate_report,
+              MOCK_CONFIG,
+          )
+
+          # Create context in mock mode
+          ctx = create_context(
+              run_date=date(2024, 1, 15),
+              config=MOCK_CONFIG,
+          )
+
+          # Run pipeline
+          ctx = run_pipeline(ctx)
+
+          # Validate output
+          assert ctx.is_success, f'Pipeline failed: {ctx.errors}'
+          assert ctx.risk.final_score is not None, 'No final score'
+          assert 0 <= ctx.risk.final_score <= 1, f'Invalid score: {ctx.risk.final_score}'
+          assert ctx.risk.regime in ['LOW_RISK', 'MODERATE_RISK', 'HIGH_RISK', 'EXTREME_RISK']
+          
+          print(f'Final Score: {ctx.risk.final_score:.2f}')
+          print(f'Regime: {ctx.risk.regime}')
+          print(f'Duration: {ctx.duration_seconds:.2f}s')
+
+          # Validate report generation
+          report = generate_report(ctx)
+          assert 'MEWS-FIN Daily Risk Report' in report
+          assert str(ctx.risk.regime) in report
+          print(f'Report length: {len(report)} characters')
+
+          print('\\nPipeline validation - PASSED')
+          "
+          
+      - name: Validate deterministic output
+        run: |
+          echo "Checking deterministic output..."
+          python -c "
+          from datetime import date
+          from pipeline.daily_run import create_context, run_pipeline, MOCK_CONFIG
+
+          # Run twice with same inputs
+          ctx1 = create_context(run_date=date(2024, 1, 15), config=MOCK_CONFIG)
+          ctx1 = run_pipeline(ctx1)
+
+          ctx2 = create_context(run_date=date(2024, 1, 15), config=MOCK_CONFIG)
+          ctx2 = run_pipeline(ctx2)
+
+          # Scores should match (mock mode is seeded)
+          assert ctx1.risk.final_score == ctx2.risk.final_score, 'Scores not deterministic'
+          assert ctx1.risk.regime == ctx2.risk.regime, 'Regimes not deterministic'
+          
+          print(f'Run 1 score: {ctx1.risk.final_score:.4f}')
+          print(f'Run 2 score: {ctx2.risk.final_score:.4f}')
+          print('Deterministic output - VERIFIED')
+          "
+          
+      - name: Validate CLI interface
+        run: |
+          echo "Testing CLI interface..."
+          python -m pipeline.daily_run.run --mock --quiet --date 2024-01-15
+          echo "CLI test - PASSED"
