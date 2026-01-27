@@ -183,6 +183,12 @@ jobs:
             "risk_engine/ensemble/explain.py"
             "risk_engine/ensemble/validate.py"
             "risk_engine/ensemble/service.py"
+            "risk_engine/evaluation/__init__.py"
+            "risk_engine/evaluation/crises.py"
+            "risk_engine/evaluation/lead_time.py"
+            "risk_engine/evaluation/false_positives.py"
+            "risk_engine/evaluation/compare.py"
+            "risk_engine/evaluation/report.py"
           )
           
           missing=0
@@ -2026,4 +2032,249 @@ jobs:
               print(f'  ✓ Output has {field}')
 
           print('\\nSpec compliance - VERIFIED')
+          "
+  validate-evaluation:
+    name: Validate Evaluation Module (Phase 4.3)
+    runs-on: ubuntu-latest
+    needs: [lint-python]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          
+      - name: Import evaluation modules
+        run: |
+          echo "Verifying evaluation modules can be imported..."
+          python -c "
+          from risk_engine.evaluation import (
+              CrisisWindow,
+              CRISIS_WINDOWS,
+              get_crisis_windows,
+              is_crisis_date,
+              EVALUATION_THRESHOLDS,
+              LeadTimeResult,
+              LeadTimeSummary,
+              compute_lead_time,
+              compute_lead_time_summary,
+              compute_all_lead_times,
+              FalseAlarmStreak,
+              FalsePositiveResult,
+              compute_false_positives,
+              compute_all_false_positives,
+              ModelEvaluation,
+              ModelComparison,
+              compare_models,
+              quick_compare,
+              format_full_report,
+              print_report,
+          )
+          print('All evaluation imports successful')
+          "
+          
+      - name: Validate crisis windows
+        run: |
+          echo "Validating crisis window definitions..."
+          python -c "
+          from risk_engine.evaluation import CRISIS_WINDOWS, get_crisis_windows
+          from datetime import date
+
+          windows = get_crisis_windows()
+          assert len(windows) == 4, f'Expected 4 crisis windows, got {len(windows)}'
+          
+          print(f'Found {len(windows)} crisis windows:')
+          for crisis in windows:
+              print(f'  - {crisis.name}')
+              print(f'    Start: {crisis.start_date}')
+              print(f'    Peak: {crisis.peak_date}')
+              print(f'    End: {crisis.end_date}')
+              print(f'    Expected score: {crisis.expected_score_range}')
+              
+              # Validate dates are chronological
+              assert crisis.start_date <= crisis.peak_date <= crisis.end_date
+              
+              # Validate score range
+              assert 0 <= crisis.expected_score_range[0] <= 1
+              assert 0 <= crisis.expected_score_range[1] <= 1
+              
+          print('\\nCrisis window validation - PASSED')
+          "
+          
+      - name: Test lead-time computation with mock data
+        run: |
+          echo "Testing lead-time computation..."
+          python -c "
+          from datetime import date, timedelta
+          from risk_engine.evaluation import (
+              compute_lead_time,
+              compute_lead_time_summary,
+              CRISIS_WINDOWS,
+              EVALUATION_THRESHOLDS,
+          )
+
+          # Create mock risk scores with known alert dates
+          mock_scores = {}
+          
+          # Generate scores from 2007 to 2023
+          current = date(2007, 1, 1)
+          end = date(2023, 12, 31)
+          
+          while current <= end:
+              # Base score varies by year to simulate different conditions
+              year = current.year
+              if year in [2008, 2020]:
+                  # Crisis years: ramp up before crisis
+                  mock_scores[current] = 0.65  # Above 0.50 threshold
+              elif year in [2011, 2022]:
+                  mock_scores[current] = 0.55
+              else:
+                  mock_scores[current] = 0.30  # Normal conditions
+              current += timedelta(days=1)
+
+          # Test lead-time computation
+          for threshold in EVALUATION_THRESHOLDS:
+              summary = compute_lead_time_summary(mock_scores, threshold)
+              print(f'Threshold {threshold:.2f}:')
+              print(f'  Detected: {summary.n_detected}')
+              print(f'  Missed: {summary.n_missed}')
+              if summary.median_lead_time:
+                  print(f'  Median lead time: {summary.median_lead_time:.0f} days')
+              print()
+
+          print('Lead-time computation - PASSED')
+          "
+          
+      - name: Test false-positive computation with mock data
+        run: |
+          echo "Testing false-positive computation..."
+          python -c "
+          from datetime import date, timedelta
+          from risk_engine.evaluation import (
+              compute_false_positives,
+              compute_all_false_positives,
+              EVALUATION_THRESHOLDS,
+          )
+
+          # Create mock risk scores
+          mock_scores = {}
+          current = date(2007, 1, 1)
+          end = date(2023, 12, 31)
+          
+          while current <= end:
+              # Low base score with occasional spikes
+              if current.month == 6:
+                  mock_scores[current] = 0.55  # June spike
+              else:
+                  mock_scores[current] = 0.25
+              current += timedelta(days=1)
+
+          # Test false-positive computation
+          for threshold in EVALUATION_THRESHOLDS:
+              result = compute_false_positives(mock_scores, threshold)
+              print(f'Threshold {threshold:.2f}:')
+              print(f'  FP days: {result.false_alarm_days}')
+              print(f'  FP rate: {result.false_positive_rate * 100:.1f}%')
+              print(f'  Streaks: {result.n_streaks}')
+              print()
+
+          print('False-positive computation - PASSED')
+          "
+          
+      - name: Test model comparison with mock data
+        run: |
+          echo "Testing model comparison..."
+          python -c "
+          from datetime import date, timedelta
+          from risk_engine.evaluation import (
+              compare_models,
+              quick_compare,
+              format_full_report,
+          )
+
+          # Create mock scores for each model type
+          def generate_mock_scores(base, noise_factor):
+              scores = {}
+              current = date(2007, 1, 1)
+              end = date(2023, 12, 31)
+              day_count = 0
+              while current <= end:
+                  # Vary by day to add some pattern
+                  adjustment = (day_count % 30) * 0.005 * noise_factor
+                  scores[current] = min(1.0, max(0.0, base + adjustment))
+                  current += timedelta(days=1)
+                  day_count += 1
+              return scores
+
+          heuristic = generate_mock_scores(0.40, 1.0)
+          ml = generate_mock_scores(0.45, 0.8)
+          ensemble = generate_mock_scores(0.42, 0.6)
+
+          # Quick compare
+          quick = quick_compare(heuristic, ml, ensemble, threshold=0.50)
+          print('Quick comparison at 0.50:')
+          for model, metrics in quick.items():
+              print(f'  {model}: score={metrics[\"score\"]:.3f}')
+
+          # Full comparison
+          comparison = compare_models(heuristic, ml, ensemble)
+          print(f'\\nBest model: {comparison.best_model}')
+          print(f'Recommended threshold: {comparison.recommended_threshold}')
+
+          # Generate report (just verify it runs)
+          report = format_full_report(comparison)
+          assert len(report) > 0, 'Report should not be empty'
+          print(f'\\nReport generated: {len(report)} characters')
+
+          print('\\nModel comparison - PASSED')
+          "
+          
+      - name: Validate output structure
+        run: |
+          echo "Validating output structure..."
+          python -c "
+          from datetime import date, timedelta
+          from risk_engine.evaluation import (
+              LeadTimeResult,
+              LeadTimeSummary,
+              FalsePositiveResult,
+              ModelEvaluation,
+              ModelComparison,
+          )
+
+          # Verify dataclass fields
+          lt_result = LeadTimeResult(
+              crisis_name='Test Crisis',
+              threshold=0.50,
+              first_alert_date=date(2020, 1, 1),
+              crisis_start_date=date(2020, 2, 1),
+              lead_time_days=31,
+              detected=True,
+          )
+          assert lt_result.detected == True
+          assert lt_result.lead_time_days == 31
+          print('LeadTimeResult structure - OK')
+
+          lt_summary = LeadTimeSummary(
+              threshold=0.50,
+              results=[lt_result],
+              n_detected=1,
+              n_missed=0,
+              mean_lead_time=31.0,
+              median_lead_time=31.0,
+              min_lead_time=31,
+              max_lead_time=31,
+          )
+          assert lt_summary.detection_rate == 1.0
+          print('LeadTimeSummary structure - OK')
+
+          print('\\nOutput structure validation - PASSED')
           "
