@@ -31,13 +31,13 @@ jobs:
           
       - name: Validate YAML syntax
         run: |
-          echo "Validating YAML syntax in core-specs/"
+          echo "Validating YAML syntax in core_specs/"
           python -c "
           import yaml
           import sys
           from pathlib import Path
           
-          specs_dir = Path('core-specs')
+          specs_dir = Path('core_specs')
           errors = []
           
           for yaml_file in specs_dir.glob('*.yaml'):
@@ -61,7 +61,7 @@ jobs:
           
       - name: Lint YAML files
         run: |
-          yamllint -d "{extends: default, rules: {line-length: {max: 120}, document-start: disable, truthy: disable}}" core-specs/
+          yamllint -d "{extends: default, rules: {line-length: {max: 120}, document-start: disable, truthy: disable}}" core_specs/
           
       - name: Validate spec schema versions
         run: |
@@ -71,7 +71,7 @@ jobs:
           from pathlib import Path
           
           required_fields = ['schema_version', 'last_updated']
-          specs_dir = Path('core-specs')
+          specs_dir = Path('core_specs')
           
           for yaml_file in specs_dir.glob('*.yaml'):
               print(f'Checking {yaml_file.name}...')
@@ -127,11 +127,12 @@ jobs:
             "README.md"
             "pyproject.toml"
             ".gitignore"
-            "core-specs/README.md"
-            "core-specs/features.yaml"
-            "core-specs/datasets.yaml"
-            "core-specs/time_alignment.yaml"
-            "core-specs/risk_score.yaml"
+            "core_specs/__init__.py"
+            "core_specs/README.md"
+            "core_specs/features.yaml"
+            "core_specs/datasets.yaml"
+            "core_specs/time_alignment.yaml"
+            "core_specs/risk_score.yaml"
             "data_ingestion/run_ingestion.py"
             "data_ingestion/adapters/__init__.py"
             "data_ingestion/adapters/market_prices/__init__.py"
@@ -289,7 +290,7 @@ jobs:
 
       - name: Validate schema loading
         run: |
-          echo "Validating schema loading from core-specs..."
+          echo "Validating schema loading from core_specs..."
           cd data_ingestion
           python -c "
           from schemas import load_dataset_schema
@@ -1985,14 +1986,15 @@ jobs:
           echo "Checking ensemble compliance with risk_score.yaml..."
           python -c "
           import yaml
+          from importlib import resources
           from risk_engine.ensemble import (
               ENSEMBLE_WEIGHTS,
               score_to_regime,
               compute_ensemble_risk_from_scores,
           )
 
-          # Load spec
-          with open('core-specs/risk_score.yaml', 'r') as f:
+          # Load spec via importlib.resources
+          with resources.files('core_specs').joinpath('risk_score.yaml').open('r') as f:
               spec = yaml.safe_load(f)
 
           # Verify regime names match spec

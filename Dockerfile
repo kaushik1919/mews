@@ -33,7 +33,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
 # Copy source code
-COPY core-specs/ ./core-specs/
+COPY core_specs/ ./core_specs/
 COPY data_ingestion/ ./data_ingestion/
 COPY feature_services/ ./feature_services/
 COPY risk_engine/ ./risk_engine/
@@ -64,8 +64,7 @@ WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy core-specs (needed at runtime for schema loading)
-COPY --chown=mews:mews core-specs/ ./core-specs/
+# Note: core_specs YAML files are packaged in the wheel, no separate copy needed
 
 # Environment configuration
 ENV PYTHONUNBUFFERED=1 \

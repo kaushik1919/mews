@@ -12,16 +12,12 @@ Validation philosophy:
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
+from importlib import resources
 from typing import Any
 
 import yaml
 
 from data_ingestion.alignment import AlignedRecord
-
-# Path to core-specs (relative to repo root)
-CORE_SPECS_DIR = Path(__file__).parent.parent.parent / "core-specs"
-DATASETS_YAML = CORE_SPECS_DIR / "datasets.yaml"
 
 
 @dataclass
@@ -50,7 +46,7 @@ class ValidationResult:
 
 def load_dataset_schema(dataset_name: str) -> dict[str, Any]:
     """
-    Load schema for a dataset from core-specs/datasets.yaml.
+    Load schema for a dataset from core_specs/datasets.yaml.
 
     Args:
         dataset_name: Name of dataset (e.g., 'market_prices')
@@ -62,14 +58,13 @@ def load_dataset_schema(dataset_name: str) -> dict[str, Any]:
         FileNotFoundError: If datasets.yaml doesn't exist
         KeyError: If dataset not found in spec
     """
-    if not DATASETS_YAML.exists():
+    try:
+        with resources.files("core_specs").joinpath("datasets.yaml").open("r") as f:
+            specs = yaml.safe_load(f)
+    except FileNotFoundError:
         raise FileNotFoundError(
-            f"Core spec not found: {DATASETS_YAML}. "
-            "Ensure core-specs/datasets.yaml exists."
-        )
-
-    with open(DATASETS_YAML, encoding="utf-8") as f:
-        specs = yaml.safe_load(f)
+            "Core spec not found. Ensure core_specs package is installed."
+        ) from None
 
     if dataset_name not in specs:
         available = [k for k in specs.keys() if not k.startswith("_")]

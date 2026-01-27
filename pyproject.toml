@@ -92,6 +92,7 @@ addopts = "-v --tb=short"
 
 [tool.setuptools]
 packages = [
+    "core_specs",
     "data_ingestion",
     "data_ingestion.adapters",
     "data_ingestion.adapters.financial_news",
@@ -114,3 +115,6 @@ packages = [
     "pipeline.daily_run",
     "visualization",
 ]
+
+[tool.setuptools.package-data]
+core_specs = ["*.yaml"]

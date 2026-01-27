@@ -218,7 +218,7 @@ python -m visualization.run_all --list
 
 ```bash
 # Check YAML syntax
-yamllint core-specs/
+yamllint core_specs/
 
 # Run linting
 ruff check .
@@ -243,13 +243,13 @@ MEWS follows a **logical microservices, physical monolith** architecture:
 │  └──────────┘  └──────────┘  └──────────┘  └─────────┘ │
 │       ↑              ↑             ↑            ↑      │
 │       └──────────────┴─────────────┴────────────┘      │
-│                    core-specs/                         │
+│                    core_specs/                         │
 └─────────────────────────────────────────────────────────┘
 ```
 
 - **Logical microservices** — Clear boundaries, testable in isolation
 - **Physical monolith** — Simple deployment, no distributed complexity
-- **Spec-driven** — All services consume `core-specs/` definitions
+- **Spec-driven** — All services consume `core_specs/` definitions
 
 ### Module Structure
 
@@ -260,7 +260,7 @@ MEWS follows a **logical microservices, physical monolith** architecture:
 | `risk_engine/` | Heuristic, ML, and ensemble risk scoring |
 | `pipeline/` | Daily orchestration and reporting |
 | `visualization/` | Documentation figures and plots |
-| `core-specs/` | YAML specifications for features, datasets, scoring |
+| `core_specs/` | YAML specifications for features, datasets, scoring |
 
 ---
 
@@ -268,7 +268,7 @@ MEWS follows a **logical microservices, physical monolith** architecture:
 
 ### Phase 1: Foundation ✅ 
 - Repository scaffold
-- Core specifications (`core-specs/`)
+- Core specifications (`core_specs/`)
 - Documentation
 - CI/CD pipeline
 
@@ -314,7 +314,7 @@ Prefer readable, correct code. Optimize only when necessary.
 
 ## Why Specs Come First
 
-The `core-specs/` directory is the **constitutional layer** of MEWS. It defines:
+The `core_specs/` directory is the **constitutional layer** of MEWS. It defines:
 
 - **What** features exist and how they're computed
 - **What** data schemas services must produce/consume  
@@ -328,7 +328,7 @@ This approach ensures:
 3. **Testability** — Services can be tested against spec contracts
 4. **Stability** — Meaning doesn't drift with implementation changes
 
-See [`core-specs/README.md`](core-specs/README.md) for details.
+See [`core_specs/README.md`](core_specs/README.md) for details.
 
 ---
 

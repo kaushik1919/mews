@@ -1,5 +1,5 @@
 """
-Sentiment feature validation against core-specs/features.yaml.
+Sentiment feature validation against core_specs/features.yaml.
 
 Ensures:
 1. Feature names match spec exactly
@@ -11,27 +11,22 @@ Ensures:
 Fail fast on violations.
 """
 
-from pathlib import Path
+from importlib import resources
 from typing import Any
 
 import pandas as pd
 import yaml
 
-# Path to core-specs
-CORE_SPECS_DIR = Path(__file__).parent.parent.parent / "core-specs"
-FEATURES_YAML = CORE_SPECS_DIR / "features.yaml"
-
 
 def load_feature_spec() -> dict[str, Any]:
     """Load features.yaml specification."""
-    if not FEATURES_YAML.exists():
+    try:
+        with resources.files("core_specs").joinpath("features.yaml").open("r") as f:
+            return yaml.safe_load(f)
+    except FileNotFoundError:
         raise FileNotFoundError(
-            f"Feature spec not found: {FEATURES_YAML}. "
-            "Ensure core-specs/features.yaml exists."
-        )
-
-    with open(FEATURES_YAML, encoding="utf-8") as f:
-        return yaml.safe_load(f)
+            "Feature spec not found. Ensure core_specs package is installed."
+        ) from None
 
 
 def get_sentiment_feature_names() -> list[str]:

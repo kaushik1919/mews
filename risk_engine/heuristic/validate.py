@@ -14,15 +14,7 @@ Fail fast on violations.
 from __future__ import annotations
 
 import math
-from pathlib import Path
 from typing import Any
-
-import yaml
-
-# Path to core-specs
-CORE_SPECS_DIR = Path(__file__).parent.parent.parent / "core-specs"
-RISK_SCORE_YAML = CORE_SPECS_DIR / "risk_score.yaml"
-
 
 # Regime bands from spec
 REGIME_BANDS: list[tuple[str, float, float]] = [
@@ -73,14 +65,17 @@ ALL_VALID_FEATURES = (
 
 def load_risk_spec() -> dict[str, Any]:
     """Load risk_score.yaml specification."""
-    if not RISK_SCORE_YAML.exists():
-        raise FileNotFoundError(
-            f"Risk score spec not found: {RISK_SCORE_YAML}. "
-            "Ensure core-specs/risk_score.yaml exists."
-        )
+    from importlib import resources
 
-    with open(RISK_SCORE_YAML, encoding="utf-8") as f:
-        return yaml.safe_load(f)
+    import yaml
+
+    try:
+        with resources.files("core_specs").joinpath("risk_score.yaml").open("r") as f:
+            return yaml.safe_load(f)
+    except FileNotFoundError:
+        raise FileNotFoundError(
+            "Risk score spec not found. Ensure core_specs package is installed."
+        ) from None
 
 
 def score_to_regime(score: float) -> str:

@@ -60,7 +60,7 @@ data/
 *.csv
 *.parquet
 *.json
-!core-specs/*.yaml
+!core_specs/*.yaml
 !data-ingestion/outputs/datasets/market_prices/v1/.gitkeep
 
 # Logs
