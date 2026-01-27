@@ -169,6 +169,10 @@ def compute_weighted_ensemble(
     """
     Compute weighted ensemble score from component scores.
 
+    Handles missing ML models by renormalizing weights across available models.
+    The heuristic weight remains unchanged; only the distribution within the
+    ML weight block is adjusted.
+
     Args:
         heuristic_score: Heuristic risk score in [0, 1]
         ml_scores: Dict of model_name -> risk_score for ML models
@@ -178,43 +182,60 @@ def compute_weighted_ensemble(
         Tuple of (ensemble_score, contributions_dict)
 
     Raises:
-        ValueError: If required models are missing from ml_scores
+        ValueError: If no valid ML model scores are provided
     """
     if weights is None:
         weights = ENSEMBLE_WEIGHTS
 
+    # Build configured ML weights dict
+    configured_ml_weights: dict[str, float] = {
+        weights.primary_ml_model: weights.primary_ml_weight,
+    }
+    if weights.secondary_ml_model and weights.secondary_ml_weight > 0:
+        configured_ml_weights[weights.secondary_ml_model] = weights.secondary_ml_weight
+
+    # Step 1: Filter ML weights to available models
+    available_ml_weights = {
+        model: weight
+        for model, weight in configured_ml_weights.items()
+        if model in ml_scores
+    }
+
+    # Step 2: Handle missing models safely
+    if not available_ml_weights:
+        raise ValueError(
+            f"No valid ML model scores provided for ensemble. "
+            f"Configured: {list(configured_ml_weights.keys())}, "
+            f"Available: {list(ml_scores.keys())}"
+        )
+
+    # Step 3: Renormalize ML weights across available models
+    # The total ML weight mass stays the same, only distribution changes
+    total_configured_ml_weight = sum(available_ml_weights.values())
+    total_ml_weight = weights.total_ml_weight  # Preserve original ML weight mass
+
+    normalized_ml_weights = {
+        model: (weight / total_configured_ml_weight) * total_ml_weight
+        for model, weight in available_ml_weights.items()
+    }
+
     # Initialize contributions
     contributions: dict[str, float] = {}
 
-    # Heuristic contribution
+    # Heuristic contribution (unchanged)
     h_contrib = weights.heuristic_weight * heuristic_score
     contributions["heuristic"] = h_contrib
 
-    # Primary ML contribution
-    if weights.primary_ml_model not in ml_scores:
-        raise ValueError(
-            f"Primary ML model '{weights.primary_ml_model}' not found in ml_scores. "
-            f"Available: {list(ml_scores.keys())}"
-        )
-    primary_score = ml_scores[weights.primary_ml_model]
-    primary_contrib = weights.primary_ml_weight * primary_score
-    contributions[weights.primary_ml_model] = primary_contrib
-
-    # Secondary ML contribution (if configured)
-    if weights.secondary_ml_weight > 0:
-        if weights.secondary_ml_model not in ml_scores:
-            raise ValueError(
-                f"Secondary ML model '{weights.secondary_ml_model}' not found in ml_scores. "
-                f"Available: {list(ml_scores.keys())}"
-            )
-        secondary_score = ml_scores[weights.secondary_ml_model]
-        secondary_contrib = weights.secondary_ml_weight * secondary_score
-        contributions[weights.secondary_ml_model] = secondary_contrib
-    else:
-        secondary_contrib = 0.0
+    # ML contributions using normalized weights
+    ml_contrib_total = 0.0
+    for model, norm_weight in normalized_ml_weights.items():
+        score = ml_scores[model]
+        contrib = norm_weight * score
+        contributions[model] = contrib
+        ml_contrib_total += contrib
 
     # Compute ensemble score
-    ensemble_score = h_contrib + primary_contrib + secondary_contrib
+    ensemble_score = h_contrib + ml_contrib_total
 
     return ensemble_score, contributions
 
