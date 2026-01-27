@@ -18,6 +18,7 @@ import sys
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from adapters.financial_news import FinancialNewsAdapter
 from adapters.macro_rates import MacroRatesAdapter
 from adapters.market_prices import MarketPricesAdapter
 from adapters.volatility_indices import VolatilityIndicesAdapter
@@ -75,6 +76,7 @@ class IngestionPipeline:
             "market_prices": MarketPricesAdapter(use_mock=self._use_mock),
             "volatility_indices": VolatilityIndicesAdapter(use_mock=self._use_mock),
             "macro_rates": MacroRatesAdapter(use_mock=self._use_mock),
+            "financial_news": FinancialNewsAdapter(use_mock=self._use_mock),
         }
 
         if dataset_name not in adapters:
@@ -341,6 +343,9 @@ Examples:
   # Ingest macro rates from FRED
   python run_ingestion.py --dataset macro_rates --tickers DGS10,DGS2,DFF --mock
 
+  # Ingest financial news
+  python run_ingestion.py --dataset financial_news --mock --days 5
+
   # Ingest last 30 days
   python run_ingestion.py --dataset market_prices --days 30
         """,
@@ -349,7 +354,7 @@ Examples:
     parser.add_argument(
         "--dataset",
         required=True,
-        choices=["market_prices", "volatility_indices", "macro_rates"],
+        choices=["market_prices", "volatility_indices", "macro_rates", "financial_news"],
         help="Dataset to ingest",
     )
 
@@ -413,6 +418,7 @@ def main():
             "market_prices": ["SPY", "QQQ", "IWM"],
             "volatility_indices": ["^VIX", "^VIX3M", "^VVIX"],
             "macro_rates": ["DGS10", "DGS2", "DFF", "BAMLH0A0HYM2"],
+            "financial_news": ["common_crawl", "reuters", "cnbc"],
         }
         tickers = default_tickers.get(args.dataset, ["SPY"])
 

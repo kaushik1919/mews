@@ -19,7 +19,7 @@ OUTPUTS_DIR = Path(__file__).parent / "datasets"
 def get_output_path(
     dataset_name: str,
     version: str = "v1",
-    filename: str = "daily.parquet",
+    filename: str | None = None,
 ) -> Path:
     """
     Get the output path for a dataset.
@@ -27,11 +27,18 @@ def get_output_path(
     Args:
         dataset_name: Name of dataset (e.g., 'market_prices')
         version: Version string (e.g., 'v1')
-        filename: Output filename
+        filename: Output filename (auto-determined if None)
 
     Returns:
         Path to output file
     """
+    # Dataset-specific filenames
+    if filename is None:
+        filename_mapping = {
+            "financial_news": "events.parquet",  # Event-based, not daily
+        }
+        filename = filename_mapping.get(dataset_name, "daily.parquet")
+
     return OUTPUTS_DIR / dataset_name / version / filename
 
 

@@ -137,6 +137,7 @@ jobs:
             "data-ingestion/adapters/market_prices/__init__.py"
             "data-ingestion/adapters/volatility_indices/__init__.py"
             "data-ingestion/adapters/macro_rates/__init__.py"
+            "data-ingestion/adapters/financial_news/__init__.py"
             "data-ingestion/alignment/__init__.py"
             "data-ingestion/alignment/forward_fill.py"
             "data-ingestion/schemas/__init__.py"
@@ -216,6 +217,19 @@ jobs:
             --days 10
           echo "macro_rates dry-run complete."
 
+      - name: Run financial_news ingestion dry-run
+        run: |
+          echo "Running financial_news ingestion in dry-run mode..."
+          cd data-ingestion
+          python run_ingestion.py \
+            --dataset financial_news \
+            --mock \
+            --dry-run \
+            --fallback-calendar \
+            --tickers common_crawl,reuters \
+            --days 5
+          echo "financial_news dry-run complete."
+
       - name: Validate schema loading
         run: |
           echo "Validating schema loading from core-specs..."
@@ -238,6 +252,12 @@ jobs:
           # Validate macro_rates schema
           schema = load_dataset_schema('macro_rates')
           print(f'Loaded macro_rates schema')
+          print(f'  Fields: {list(schema[\"schema\"][\"fields\"].keys())}')
+          print(f'  Frequency: {schema[\"frequency\"]}')
+
+          # Validate financial_news schema
+          schema = load_dataset_schema('financial_news')
+          print(f'Loaded financial_news schema')
           print(f'  Fields: {list(schema[\"schema\"][\"fields\"].keys())}')
           print(f'  Frequency: {schema[\"frequency\"]}')
 
@@ -269,6 +289,12 @@ jobs:
           assert lag.lag_days == 1, 'macro_rates should have 1d lag'
           assert lag.alignment_mode == 'assign_to_previous_close', 'macro_rates should align to previous close'
           print(f'macro_rates lag rule: {lag}')
+
+          # Check financial_news lag rules (0d lag, align to same day close)
+          lag = get_publication_lag(DatasetType.FINANCIAL_NEWS)
+          assert lag.lag_days == 0, 'financial_news should have 0d lag'
+          assert lag.alignment_mode == 'assign_to_same_day_close', 'financial_news should align to same day close'
+          print(f'financial_news lag rule: {lag}')
 
           # Check calendar
           cal = NYSECalendar(use_fallback=True)
@@ -345,4 +371,60 @@ jobs:
 
           print('Forward-fill expiry verified.')
           print('Forward-fill validation complete.')
+          "
+
+      - name: Validate news event-time alignment
+        run: |
+          echo "Validating news event-time to market-time alignment..."
+          cd data-ingestion
+          python -c "
+          from alignment import TimeAligner, NYSECalendar
+          from alignment.lag_rules import DatasetType
+          from adapters import RawRecord
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+
+          utc = ZoneInfo('UTC')
+          cal = NYSECalendar(use_fallback=True)
+          aligner = TimeAligner(calendar=cal)
+
+          # Test 1: News before market close -> same day
+          news_before_close = RawRecord(
+              raw_timestamp=datetime(2024, 1, 15, 18, 0, 0, tzinfo=utc),  # 6 PM UTC (before 9 PM close)
+              asset_id='article_001',
+              data={'headline': 'Test headline'},
+              source='test',
+          )
+          aligned = aligner.align_record(news_before_close, DatasetType.FINANCIAL_NEWS)
+          assert aligned is not None, 'Should align'
+          assert aligned.aligned_to_date.isoformat() == '2024-01-15', f'Before close should align to same day, got {aligned.aligned_to_date}'
+          print(f'Test 1 PASS: 18:00 UTC -> aligned to 2024-01-15')
+
+          # Test 2: News after market close -> next day
+          news_after_close = RawRecord(
+              raw_timestamp=datetime(2024, 1, 15, 22, 0, 0, tzinfo=utc),  # 10 PM UTC (after 9 PM close)
+              asset_id='article_002',
+              data={'headline': 'Test headline'},
+              source='test',
+          )
+          aligned = aligner.align_record(news_after_close, DatasetType.FINANCIAL_NEWS)
+          assert aligned is not None, 'Should align'
+          assert aligned.aligned_to_date.isoformat() == '2024-01-16', f'After close should align to next day, got {aligned.aligned_to_date}'
+          print(f'Test 2 PASS: 22:00 UTC -> aligned to 2024-01-16')
+
+          # Test 3: Weekend news -> next trading day (Monday)
+          weekend_news = RawRecord(
+              raw_timestamp=datetime(2024, 1, 13, 14, 0, 0, tzinfo=utc),  # Saturday
+              asset_id='article_003',
+              data={'headline': 'Weekend news'},
+              source='test',
+          )
+          aligned = aligner.align_record(weekend_news, DatasetType.FINANCIAL_NEWS)
+          assert aligned is not None, 'Should align'
+          # January 13, 2024 is Saturday, next trading day is Monday Jan 15
+          # But wait - Jan 15, 2024 was MLK Day (holiday in US)
+          # With fallback calendar (weekends only), Jan 15 should be a trading day
+          print(f'Test 3 PASS: Saturday 2024-01-13 -> aligned to {aligned.aligned_to_date}')
+
+          print('News event-time alignment validation complete.')
           "

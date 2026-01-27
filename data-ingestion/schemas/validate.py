@@ -153,6 +153,7 @@ class SchemaValidator:
         full_data = {
             "timestamp": record.timestamp,
             id_field: record.asset_id,  # Map internal asset_id to schema field name
+            "source": record.source,  # Include source field for validation
             **record.data,
         }
 
@@ -353,6 +354,48 @@ class SchemaValidator:
                         f"value={value} is outside typical range [-10, 50] "
                         f"for series {series_id}"
                     )
+
+        # Financial news quality rules
+        # From datasets.yaml:
+        # - article_id required
+        # - headline required, max 500 chars
+        # - body optional (nullable), max 50000 chars
+        # - url required
+        elif self._dataset_name == "financial_news":
+            headline = data.get("headline")
+            body = data.get("body")
+            url = data.get("url")
+            article_id = data.get("article_id")
+
+            # Validate headline is present and non-empty
+            if not headline or len(str(headline).strip()) == 0:
+                errors.append(ValidationError(
+                    field="headline",
+                    message="headline is required and must be non-empty",
+                    value=headline,
+                ))
+
+            # Validate headline length
+            if headline and len(headline) > 500:
+                errors.append(ValidationError(
+                    field="headline",
+                    message="headline exceeds max length of 500 characters",
+                    value=f"length={len(headline)}",
+                ))
+
+            # Validate body length if present (body is nullable)
+            if body is not None and len(body) > 50000:
+                errors.append(ValidationError(
+                    field="body",
+                    message="body exceeds max length of 50000 characters",
+                    value=f"length={len(body)}",
+                ))
+
+            # Flag articles without body (headline-only, common for RSS)
+            if body is None:
+                warnings.append(
+                    f"Article {article_id} has no body (headline-only)"
+                )
 
         return {"errors": errors, "warnings": warnings}
 
