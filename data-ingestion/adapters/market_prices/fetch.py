@@ -10,16 +10,9 @@ Assumptions:
 - Rate limits are respected via conservative request patterns
 """
 
-# Use relative import within the package
-import sys
 from datetime import datetime
-from pathlib import Path
 
-_PKG_ROOT = Path(__file__).parent.parent.parent
-if str(_PKG_ROOT) not in sys.path:
-    sys.path.insert(0, str(_PKG_ROOT))
-
-from adapters import BaseAdapter, RawRecord
+from .. import BaseAdapter, RawRecord
 
 
 class MarketPricesAdapter(BaseAdapter):

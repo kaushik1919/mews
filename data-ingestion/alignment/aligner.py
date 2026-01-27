@@ -13,20 +13,14 @@ Implements rules from core-specs/time_alignment.yaml:
 CRITICAL: All alignment logic MUST live here, not in adapters.
 """
 
-# Use relative import within the package
-import sys
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from pathlib import Path
 from typing import Any
 
-_PKG_ROOT = Path(__file__).parent.parent
-if str(_PKG_ROOT) not in sys.path:
-    sys.path.insert(0, str(_PKG_ROOT))
-
 from adapters import RawRecord
-from alignment.calendar import UTC, NYSECalendar
-from alignment.lag_rules import DatasetType, get_publication_lag
+
+from .calendar import UTC, NYSECalendar
+from .lag_rules import DatasetType, get_publication_lag
 
 
 @dataclass

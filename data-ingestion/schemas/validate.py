@@ -10,19 +10,12 @@ Validation philosophy:
 - Log warnings for flags (per spec)
 """
 
-# Use relative import within the package
-import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import yaml
-
-_PKG_ROOT = Path(__file__).parent.parent
-if str(_PKG_ROOT) not in sys.path:
-    sys.path.insert(0, str(_PKG_ROOT))
-
 from alignment import AlignedRecord
 
 # Path to core-specs (relative to repo root)

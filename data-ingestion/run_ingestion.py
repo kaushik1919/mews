@@ -16,16 +16,8 @@ Usage:
 import argparse
 import sys
 from datetime import datetime, timedelta
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
-# Add current directory to path for local imports
-# This allows running from data-ingestion/ directory without pip install
-_SCRIPT_DIR = Path(__file__).parent.resolve()
-if str(_SCRIPT_DIR) not in sys.path:
-    sys.path.insert(0, str(_SCRIPT_DIR))
-
-# Now import using relative package structure
 from adapters.market_prices import MarketPricesAdapter
 from adapters.volatility_indices import VolatilityIndicesAdapter
 from alignment import AlignedRecord, NYSECalendar, TimeAligner

@@ -17,22 +17,22 @@ last_updated: "2026-01-28"
 # ==============================================================================
 
 risk_score:
-  
+
   name: "MEWS Risk Score"
-  
+
   purpose: >
     A single interpretable metric representing the current level of
     systemic market risk. Designed for early warning, not prediction.
     Higher values indicate elevated systemic stress warranting attention.
-    
+
   output_type: "float64"
   output_range: [0.0, 1.0]
-  
+
   semantic_guarantee: >
     A risk score of X means the same thing regardless of which model
     produced it. Models may differ in HOW they compute X, but the
     INTERPRETATION of X is fixed by this specification.
-    
+
   not_a_prediction: >
     The risk score does NOT predict future returns, crashes, or specific
     events. It quantifies CURRENT stress level based on observable signals.
@@ -44,7 +44,7 @@ risk_score:
 # Discrete interpretive bands for the continuous risk score.
 
 regime_bands:
-  
+
   - name: "Low Risk"
     range: [0.0, 0.25]
     interpretation: >
@@ -57,7 +57,7 @@ regime_bands:
       - "Sentiment neutral to positive"
     recommended_attention: "Routine monitoring"
     color_code: "#2ECC71"  # Green
-    
+
   - name: "Moderate Risk"
     range: [0.25, 0.50]
     interpretation: >
@@ -71,7 +71,7 @@ regime_bands:
       - "Sentiment mixed or mildly negative"
     recommended_attention: "Enhanced monitoring, review positions"
     color_code: "#F39C12"  # Yellow/Orange
-    
+
   - name: "High Risk"
     range: [0.50, 0.75]
     interpretation: >
@@ -86,7 +86,7 @@ regime_bands:
       - "Volume abnormalities"
     recommended_attention: "Active risk management, prepare contingencies"
     color_code: "#E74C3C"  # Red
-    
+
   - name: "Extreme Risk"
     range: [0.75, 1.0]
     interpretation: >
@@ -102,51 +102,51 @@ regime_bands:
     recommended_attention: "Crisis protocols, assume tail scenarios"
     color_code: "#8E44AD"  # Purple
 
-  # NOTE: Color codes are visualization aids only and carry no numerical
-  # or semantic meaning. They are provided for dashboard consistency
-  # but must not be used in any programmatic logic.
+# NOTE: Color codes are visualization aids only and carry no numerical
+# or semantic meaning. They are provided for dashboard consistency
+# but must not be used in any programmatic logic.
 
 # ==============================================================================
 # CALIBRATION REQUIREMENTS
 # ==============================================================================
 
 calibration:
-  
+
   philosophy: >
     Risk scores should have consistent meaning over time. A score of 0.6
     in 2025 should represent similar stress conditions as 0.6 in 2010.
     This requires careful calibration against historical stress episodes.
-    
+
   historical_anchors:
     description: >
       These historical events serve as calibration references. Models
       should produce scores in the indicated ranges during these periods.
-      
+
     anchors:
       - event: "2008 Global Financial Crisis (peak: Oct 2008)"
         expected_range: [0.85, 1.0]
         description: "Maximum systemic stress in modern history"
-        
+
       - event: "2020 COVID Crash (peak: Mar 2020)"
         expected_range: [0.80, 0.95]
         description: "Rapid onset crisis with liquidity stress"
-        
+
       - event: "2011 European Debt Crisis (peak: Aug 2011)"
         expected_range: [0.60, 0.80]
         description: "Significant stress, less severe than 2008"
-        
+
       - event: "2018 Q4 Selloff (peak: Dec 2018)"
         expected_range: [0.50, 0.70]
         description: "Sharp correction without systemic breakdown"
-        
+
       - event: "2017 Low Volatility (typical day)"
         expected_range: [0.05, 0.20]
         description: "Extended period of market calm"
-        
+
       - event: "2015 China Devaluation (Aug 2015)"
         expected_range: [0.55, 0.75]
         description: "Acute but contained stress episode"
-        
+
   calibration_frequency: "annual"
   description: >
     Models should be recalibrated annually to ensure score stability.
@@ -157,36 +157,36 @@ calibration:
 # ==============================================================================
 
 model_conformance:
-  
+
   output_requirements:
     - "Score MUST be in [0.0, 1.0] range"
-    - "Score MUST be deterministic (same inputs → same output)"
+    - "Score MUST be deterministic (same inputs Ã¢â€ â€™ same output)"
     - "Score MUST be computed without lookahead"
     - "Score MUST be explainable in terms of input features"
-    
+
   explainability_requirements:
     description: >
       Any model producing a risk score MUST also provide feature
       contributions or importances. Black-box scores are prohibited.
-      
+
     required_outputs:
       - name: "feature_contributions"
         type: "dict[str, float]"
         description: "Contribution of each feature to the score"
-        
+
       - name: "dominant_factors"
         type: "list[str]"
         description: "Top 3-5 features driving current score"
-        
+
       - name: "regime_rationale"
         type: "str"
         description: "Human-readable explanation of regime assignment"
-        
+
   versioning:
     description: >
       Each model version must be tracked. Score comparisons across
       versions require explicit version metadata.
-      
+
     required_metadata:
       - "model_version"
       - "spec_version"
@@ -199,39 +199,39 @@ model_conformance:
 # Rules for combining multiple scoring approaches.
 
 composition:
-  
+
   ensemble_rules:
     description: >
       If multiple models are ensembled, the final score must still
       conform to all requirements above. Ensemble weights must be
       documented and stable.
-      
+
     permitted_methods:
       - "weighted_average"
       - "median"
       - "maximum"  # Conservative approach
-      
+
     prohibited_methods:
       - "learned_stacking"  # Reduces explainability
-      
+
   sub_score_requirements:
     description: >
       Component sub-scores (e.g., volatility risk, sentiment risk)
       should also be in [0, 1] before combination.
-      
+
     sub_scores:
       - name: "volatility_risk"
         description: "Risk from realized and implied volatility signals"
-        
+
       - name: "correlation_risk"
         description: "Risk from cross-asset correlation dynamics"
-        
+
       - name: "credit_risk"
         description: "Risk from credit spread and funding indicators"
-        
+
       - name: "sentiment_risk"
         description: "Risk from news sentiment deterioration"
-        
+
       - name: "liquidity_risk"
         description: "Risk from volume and market functioning indicators"
 
@@ -240,24 +240,24 @@ composition:
 # ==============================================================================
 
 output_format:
-  
+
   primary_output:
     risk_score: "float64"
     regime: "str"
     timestamp: "datetime"
-    
+
   required_metadata:
     model_version: "str"
     spec_version: "str"
     computation_time_utc: "datetime"
-    
+
   optional_detail:
     feature_contributions: "dict[str, float]"
     sub_scores: "dict[str, float]"
     dominant_factors: "list[str]"
     regime_rationale: "str"
     confidence: "float64"  # Optional model confidence
-    
+
   serialization:
     format: "json"
     schema: >

@@ -204,9 +204,8 @@ jobs:
       - name: Validate schema loading
         run: |
           echo "Validating schema loading from core-specs..."
+          cd data-ingestion
           python -c "
-          import sys
-          sys.path.insert(0, 'data-ingestion')
           from schemas import load_dataset_schema
 
           # Validate market_prices schema
@@ -227,9 +226,8 @@ jobs:
       - name: Validate time alignment rules
         run: |
           echo "Validating time alignment module..."
+          cd data-ingestion
           python -c "
-          import sys
-          sys.path.insert(0, 'data-ingestion')
           from alignment import TimeAligner, NYSECalendar
           from alignment.lag_rules import DatasetType, get_publication_lag
 

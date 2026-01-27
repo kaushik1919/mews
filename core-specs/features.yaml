@@ -10,11 +10,11 @@
 # - All timestamps are UTC (see time_alignment.yaml)
 # - All features are computed from FREE PUBLIC data only
 # - No lookahead bias is permitted
-# - Features are deterministic: same inputs → same outputs
+# - Features are deterministic: same inputs â†’ same outputs
 #
 # DERIVED FEATURE RULE:
 # Features with source_category: derived may ONLY depend on inputs whose
-# timestamps are ≤ the feature timestamp AND obey all publication lag rules.
+# timestamps are â‰¤ the feature timestamp AND obey all publication lag rules.
 # Derived features inherit the strictest lag constraint of their inputs.
 # Violation of this rule constitutes lookahead bias.
 #
@@ -36,13 +36,13 @@ modalities:
     description: "Continuous numeric features derived from market/macro data"
     normalization_required: true
     alignment: "market_close"
-    
+
   sentiment:
     description: "Sentiment scores derived from textual data"
     normalization_required: true
     alignment: "end_of_day"
     value_range: [-1.0, 1.0]
-    
+
   graph:
     description: "Network/correlation-based features"
     normalization_required: true
@@ -59,7 +59,7 @@ numeric:
   # ---------------------------------------------------------------------------
   # VOLATILITY FEATURES
   # ---------------------------------------------------------------------------
-  
+
   realized_volatility_20d:
     source_category: market_prices
     source_fields: [close]
@@ -77,7 +77,7 @@ numeric:
       contagion risk. Sharp increases often precede systemic stress events.
     output_range: [0.0, null]
     unit: "annualized_pct"
-    
+
   realized_volatility_60d:
     source_category: market_prices
     source_fields: [close]
@@ -114,7 +114,7 @@ numeric:
   # ---------------------------------------------------------------------------
   # DRAWDOWN FEATURES
   # ---------------------------------------------------------------------------
-  
+
   max_drawdown_20d:
     source_category: market_prices
     source_fields: [close]
@@ -147,7 +147,7 @@ numeric:
   # ---------------------------------------------------------------------------
   # LIQUIDITY FEATURES
   # ---------------------------------------------------------------------------
-  
+
   volume_zscore_20d:
     source_category: market_prices
     source_fields: [volume]
@@ -184,7 +184,7 @@ numeric:
   # ---------------------------------------------------------------------------
   # MACRO STRESS FEATURES
   # ---------------------------------------------------------------------------
-  
+
   vix_level:
     source_category: volatility_indices
     source_fields: [close]

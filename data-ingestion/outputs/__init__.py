@@ -7,19 +7,13 @@ Output format follows core-specs/datasets.yaml:
 - versioning: date_partitioned
 """
 
-# Use relative import within the package
-import sys
 from pathlib import Path
 from typing import Any
-
-_PKG_ROOT = Path(__file__).parent.parent
-if str(_PKG_ROOT) not in sys.path:
-    sys.path.insert(0, str(_PKG_ROOT))
 
 from alignment import AlignedRecord
 
 # Output directory relative to data-ingestion/
-OUTPUTS_DIR = Path(__file__).parent / "outputs" / "datasets"
+OUTPUTS_DIR = Path(__file__).parent / "datasets"
 
 
 def get_output_path(
