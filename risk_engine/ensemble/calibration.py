@@ -151,9 +151,11 @@ class FittedCalibrator:
 
 
 def fit_calibrator(
-    raw_scores: np.ndarray,
-    true_labels: np.ndarray,
-    config: CalibratorConfig | CalibrationMethod | None = None,
+    scores: np.ndarray,
+    targets: np.ndarray | None = None,
+    *,
+    y: np.ndarray | None = None,
+    method: str | CalibrationMethod | CalibratorConfig | None = None,
 ) -> FittedCalibrator:
     """
     Fit a calibrator on training + validation data.
@@ -162,9 +164,10 @@ def fit_calibrator(
     Never include test data in calibration fitting.
 
     Args:
-        raw_scores: Raw ensemble scores from train + val
-        true_labels: True regime labels (0-3) or binary labels
-        config: Calibration configuration
+        scores: Raw ensemble scores from train + val
+        targets: True regime labels (0-3) or binary labels (primary argument)
+        y: Alias for targets (backward compatibility)
+        method: Calibration method or configuration
 
     Returns:
         Fitted calibrator ready for transform()
@@ -172,11 +175,37 @@ def fit_calibrator(
     Raises:
         ValueError: If inputs are invalid
     """
+    # Canonicalize targets (targets is primary, y is for backward compat)
+    if targets is None and y is None:
+        raise ValueError("Either `targets` or `y` must be provided")
+    if targets is None:
+        targets = y
+
     # Handle convenience usage: method passed directly
-    if isinstance(config, CalibrationMethod):
-        config = CalibratorConfig(method=config)
-    elif config is None:
+    config: CalibratorConfig
+    if isinstance(method, CalibratorConfig):
+        config = method
+    elif isinstance(method, CalibrationMethod):
+        config = CalibratorConfig(method=method)
+    elif isinstance(method, str):
+        # Map string to CalibrationMethod
+        method_map = {
+            "platt": CalibrationMethod.PLATT_SCALING,
+            "platt_scaling": CalibrationMethod.PLATT_SCALING,
+            "isotonic": CalibrationMethod.ISOTONIC_REGRESSION,
+            "isotonic_regression": CalibrationMethod.ISOTONIC_REGRESSION,
+            "none": CalibrationMethod.NONE,
+        }
+        cal_method = method_map.get(method.lower(), CalibrationMethod.ISOTONIC_REGRESSION)
+        config = CalibratorConfig(method=cal_method)
+    elif method is None:
         config = CalibratorConfig()
+    else:
+        config = CalibratorConfig()
+
+    # Use canonical names internally
+    raw_scores = scores
+    true_labels = targets
 
     # Validate inputs
     raw_scores = np.asarray(raw_scores).flatten()
