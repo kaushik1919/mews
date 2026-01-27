@@ -230,6 +230,9 @@ def apply_temporal_smoothing(
     if scores is None:
         raise ValueError("Either `scores` or `current_score` with `state` must be provided")
 
+    # Check if input was a scalar (return scalar in that case)
+    input_was_scalar = np.isscalar(scores) or (isinstance(scores, np.ndarray) and scores.ndim == 0)
+
     scores_arr = np.asarray(scores).flatten()
     n = len(scores_arr)
 
@@ -237,7 +240,10 @@ def apply_temporal_smoothing(
         return np.array([])
 
     if config.method == SmoothingMethod.NONE:
-        return scores_arr.copy()
+        result = scores_arr.copy()
+        if input_was_scalar and len(result) == 1:
+            return _to_scalar(result[0])
+        return result
 
     # Create output array
     smoothed = np.zeros(n)
@@ -254,6 +260,10 @@ def apply_temporal_smoothing(
 
     # Ensure output is in [0, 1]
     smoothed = np.clip(smoothed, 0.0, 1.0)
+
+    # If input was scalar, return scalar
+    if input_was_scalar and len(smoothed) == 1:
+        return _to_scalar(smoothed[0])
 
     return smoothed
 
