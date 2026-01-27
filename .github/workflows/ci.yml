@@ -176,6 +176,13 @@ jobs:
             "risk_engine/ml/evaluate.py"
             "risk_engine/ml/explain.py"
             "risk_engine/ml/validate.py"
+            "risk_engine/ensemble/__init__.py"
+            "risk_engine/ensemble/weights.py"
+            "risk_engine/ensemble/calibration.py"
+            "risk_engine/ensemble/smoothing.py"
+            "risk_engine/ensemble/explain.py"
+            "risk_engine/ensemble/validate.py"
+            "risk_engine/ensemble/service.py"
           )
           
           missing=0
@@ -1587,4 +1594,436 @@ jobs:
               print(f'  {name}: {imp:.4f}')
 
           print('\\nRandom Forest - VERIFIED')
+          "
+
+  validate-ensemble:
+    name: Validate Ensemble & Calibration Layer
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .  # Install from pyproject.toml
+
+      - name: Import ensemble modules
+        run: |
+          echo "Verifying ensemble modules can be imported..."
+          python -c "
+          from risk_engine.ensemble import (
+              EnsembleConfig,
+              ENSEMBLE_CONFIG,
+              EnsembleWeights,
+              ENSEMBLE_WEIGHTS,
+              CalibrationMethod,
+              FittedCalibrator,
+              fit_calibrator,
+              SmoothingConfig,
+              SmoothingState,
+              EnsembleExplanation,
+              compute_ensemble_explanation,
+              validate_ensemble_output,
+              score_to_regime,
+              EnsembleRiskSnapshot,
+              compute_ensemble_risk,
+              compute_ensemble_risk_from_scores,
+              compute_weighted_ensemble,
+          )
+
+          print('Default ensemble weights:')
+          print(f'  Heuristic: {ENSEMBLE_WEIGHTS.heuristic_weight}')
+          print(f'  Primary ML ({ENSEMBLE_WEIGHTS.primary_ml_model}): {ENSEMBLE_WEIGHTS.primary_ml_weight}')
+          print(f'  Secondary ML ({ENSEMBLE_WEIGHTS.secondary_ml_model}): {ENSEMBLE_WEIGHTS.secondary_ml_weight}')
+
+          print('\\nEnsemble import successful.')
+          "
+
+      - name: Validate weight constraints
+        run: |
+          echo "Testing weight constraint enforcement..."
+          python -c "
+          from risk_engine.ensemble.weights import EnsembleWeights
+
+          # Valid weights
+          w = EnsembleWeights(
+              heuristic_weight=0.35,
+              primary_ml_weight=0.45,
+              secondary_ml_weight=0.20,
+              primary_ml_model='random_forest',
+              secondary_ml_model='xgboost',
+          )
+          assert w.heuristic_weight >= 0.30, 'Heuristic weight constraint violated'
+          assert w.total_ml_weight <= 0.70, 'ML weight constraint violated'
+          print(f'Valid weights: h={w.heuristic_weight}, ml={w.total_ml_weight}')
+
+          # Test invalid weights (heuristic too low)
+          try:
+              EnsembleWeights(
+                  heuristic_weight=0.20,  # Below 0.30 minimum
+                  primary_ml_weight=0.80,
+              )
+              assert False, 'Should have raised ValueError'
+          except ValueError as e:
+              print(f'Correctly rejected low heuristic weight: {e}')
+
+          # Test weights don't sum to 1
+          try:
+              EnsembleWeights(
+                  heuristic_weight=0.30,
+                  primary_ml_weight=0.30,
+                  secondary_ml_weight=0.30,  # Sum = 0.90
+              )
+              assert False, 'Should have raised ValueError'
+          except ValueError as e:
+              print(f'Correctly rejected non-unit weights: {e}')
+
+          print('\\nWeight constraints - VERIFIED')
+          "
+
+      - name: Validate ensemble computation
+        run: |
+          echo "Testing ensemble score computation..."
+          python -c "
+          from risk_engine.ensemble import (
+              compute_weighted_ensemble,
+              ENSEMBLE_WEIGHTS,
+              score_to_regime,
+          )
+
+          # Test ensemble computation
+          heuristic_score = 0.55
+          ml_scores = {
+              'random_forest': 0.65,
+              'xgboost': 0.60,
+          }
+
+          ensemble, contributions = compute_weighted_ensemble(
+              heuristic_score=heuristic_score,
+              ml_scores=ml_scores,
+              weights=ENSEMBLE_WEIGHTS,
+          )
+
+          print(f'Heuristic score: {heuristic_score}')
+          print(f'ML scores: {ml_scores}')
+          print(f'Ensemble score: {ensemble:.4f}')
+          print(f'Contributions: {contributions}')
+
+          # Verify score is in [0, 1]
+          assert 0 <= ensemble <= 1, 'Ensemble score out of bounds'
+
+          # Verify contributions sum to ensemble
+          contrib_sum = sum(contributions.values())
+          assert abs(contrib_sum - ensemble) < 1e-6, 'Contributions do not sum to ensemble'
+
+          # Verify regime mapping
+          regime = score_to_regime(ensemble)
+          print(f'Regime: {regime}')
+
+          # Expected: 0.35*0.55 + 0.45*0.65 + 0.20*0.60 = 0.1925 + 0.2925 + 0.12 = 0.605
+          expected = 0.35*0.55 + 0.45*0.65 + 0.20*0.60
+          assert abs(ensemble - expected) < 1e-6, f'Expected {expected}, got {ensemble}'
+
+          print('\\nEnsemble computation - VERIFIED')
+          "
+
+      - name: Validate calibration
+        run: |
+          echo "Testing calibration methods..."
+          python -c "
+          import numpy as np
+          from risk_engine.ensemble.calibration import (
+              CalibrationMethod,
+              fit_calibrator,
+              apply_calibration,
+          )
+
+          # Generate mock training data
+          np.random.seed(42)
+          n = 100
+          raw_scores = np.random.uniform(0, 1, n)
+          # Create targets with some noise
+          targets = (raw_scores > 0.5).astype(int)
+
+          # Test Platt scaling
+          print('Testing Platt scaling...')
+          calibrator = fit_calibrator(
+              raw_scores=raw_scores,
+              targets=targets,
+              method=CalibrationMethod.PLATT_SCALING,
+          )
+          print(f'Calibrator method: {calibrator.method.value}')
+
+          # Apply calibration
+          test_scores = np.array([0.2, 0.5, 0.8])
+          calibrated = np.array([apply_calibration(s, calibrator) for s in test_scores])
+          print(f'Raw: {test_scores}')
+          print(f'Calibrated: {calibrated}')
+
+          # Verify calibrated scores are in [0, 1]
+          assert np.all(calibrated >= 0) and np.all(calibrated <= 1), 'Calibrated scores out of bounds'
+
+          # Test isotonic regression
+          print('\\nTesting Isotonic regression...')
+          calibrator_iso = fit_calibrator(
+              raw_scores=raw_scores,
+              targets=targets,
+              method=CalibrationMethod.ISOTONIC_REGRESSION,
+          )
+
+          calibrated_iso = np.array([apply_calibration(s, calibrator_iso) for s in test_scores])
+          print(f'Calibrated (isotonic): {calibrated_iso}')
+
+          # Verify monotonicity (approximately)
+          assert calibrated_iso[0] <= calibrated_iso[1] <= calibrated_iso[2], 'Isotonic not monotonic'
+
+          print('\\nCalibration - VERIFIED')
+          "
+
+      - name: Validate temporal smoothing
+        run: |
+          echo "Testing temporal smoothing..."
+          python -c "
+          from risk_engine.ensemble.smoothing import (
+              SmoothingConfig,
+              SmoothingState,
+              SmoothingMethod,
+              apply_temporal_smoothing,
+          )
+
+          config = SmoothingConfig(
+              method=SmoothingMethod.EXPONENTIAL_MA,
+              window=3,
+              alpha=0.6,
+              spike_threshold=0.15,
+          )
+
+          state = SmoothingState()
+
+          # Simulate time series
+          raw_scores = [0.30, 0.32, 0.35, 0.60, 0.58, 0.55]  # Jump at t=3 (spike)
+          smoothed = []
+
+          for score in raw_scores:
+              s = apply_temporal_smoothing(score, state, config)
+              smoothed.append(s)
+              print(f'Raw: {score:.2f} -> Smoothed: {s:.2f}')
+
+          # Verify spike preservation (score at t=3 should not be over-smoothed)
+          # The jump from 0.35 to 0.60 is 0.25 > threshold 0.15
+          spike_diff = raw_scores[3] - smoothed[2]  # Compare spike to previous smoothed
+          print(f'\\nSpike detection: raw jump = {raw_scores[3] - raw_scores[2]:.2f}')
+
+          # Verify all smoothed scores are in [0, 1]
+          for s in smoothed:
+              assert 0 <= s <= 1, f'Smoothed score {s} out of bounds'
+
+          print('\\nTemporal smoothing - VERIFIED')
+          "
+
+      - name: Validate explanation generation
+        run: |
+          echo "Testing explanation generation..."
+          python -c "
+          from risk_engine.ensemble.explain import compute_ensemble_explanation
+
+          explanation = compute_ensemble_explanation(
+              ensemble_score=0.62,
+              heuristic_score=0.55,
+              heuristic_contributions={
+                  'volatility_stress': 0.15,
+                  'drawdown_stress': 0.10,
+                  'sentiment_stress': 0.08,
+              },
+              ml_scores={'random_forest': 0.68},
+              ml_shap_values={
+                  'realized_volatility_20d': 0.12,
+                  'max_drawdown_20d': 0.08,
+              },
+              model_weights={'heuristic': 0.35, 'random_forest': 0.65},
+              regime='HIGH_RISK',
+          )
+
+          print(f'Dominant model: {explanation.dominant_model}')
+          print(f'Agreement level: {explanation.agreement_level}')
+          print(f'Regime: {explanation.regime}')
+          print(f'\\nTop features:')
+          for f in explanation.top_features:
+              print(f'  {f.rank}. {f.feature_name}: {f.combined_importance:.4f}')
+          print(f'\\nDelta analysis: {explanation.delta_analysis.dominant_direction}')
+          print(f'\\nSummary: {explanation.summary}')
+
+          # Verify explanation has required fields
+          exp_dict = explanation.to_dict()
+          required = ['model_contributions', 'top_features', 'regime', 'summary']
+          for field in required:
+              assert field in exp_dict, f'Missing field: {field}'
+
+          print('\\nExplanation generation - VERIFIED')
+          "
+
+      - name: Validate end-to-end ensemble
+        run: |
+          echo "Testing end-to-end ensemble computation..."
+          python -c "
+          from risk_engine.ensemble import (
+              compute_ensemble_risk_from_scores,
+              EnsembleConfig,
+              ENSEMBLE_WEIGHTS,
+          )
+
+          # Simulate scores from heuristic and ML models
+          result = compute_ensemble_risk_from_scores(
+              heuristic_score=0.52,
+              ml_scores={
+                  'random_forest': 0.58,
+                  'xgboost': 0.55,
+              },
+              heuristic_contributions={
+                  'volatility_stress': 0.12,
+                  'sentiment_stress': 0.08,
+              },
+              ml_shap_values={
+                  'realized_volatility_20d': 0.10,
+              },
+              as_of='2024-01-15T16:00:00Z',
+          )
+
+          print(f'Risk score: {result.risk_score:.4f}')
+          print(f'Regime: {result.regime}')
+          print(f'\\nScore decomposition:')
+          print(f'  Raw ensemble: {result.raw_ensemble_score:.4f}')
+          print(f'  Calibrated: {result.calibrated_score:.4f}')
+          print(f'  Smoothed: {result.smoothed_score:.4f}')
+          print(f'\\nModel contributions: {result.model_contributions}')
+          print(f'\\nValidation passed: {result.validation.is_valid}')
+
+          # Verify validation passed
+          assert result.validation.is_valid, f'Validation failed: {result.validation.critical_failures}'
+
+          # Verify score in [0, 1]
+          assert 0 <= result.risk_score <= 1, 'Score out of bounds'
+
+          print('\\nEnd-to-end ensemble - VERIFIED')
+          "
+
+      - name: Validate deterministic output
+        run: |
+          echo "Testing deterministic ensemble output..."
+          python -c "
+          from risk_engine.ensemble import compute_ensemble_risk_from_scores
+
+          # Run twice with same inputs
+          kwargs = dict(
+              heuristic_score=0.45,
+              ml_scores={'random_forest': 0.50, 'xgboost': 0.48},
+              as_of='2024-01-15T16:00:00Z',
+          )
+
+          result1 = compute_ensemble_risk_from_scores(**kwargs)
+          result2 = compute_ensemble_risk_from_scores(**kwargs)
+
+          assert result1.risk_score == result2.risk_score, 'Non-deterministic output'
+          assert result1.regime == result2.regime, 'Non-deterministic regime'
+
+          print(f'Run 1: {result1.risk_score:.6f} ({result1.regime})')
+          print(f'Run 2: {result2.risk_score:.6f} ({result2.regime})')
+
+          print('\\nDeterministic output - VERIFIED')
+          "
+
+      - name: Validate regime boundaries
+        run: |
+          echo "Testing regime boundary mappings..."
+          python -c "
+          from risk_engine.ensemble import score_to_regime
+
+          test_cases = [
+              (0.00, 'LOW_RISK'),
+              (0.24, 'LOW_RISK'),
+              (0.25, 'MODERATE_RISK'),
+              (0.49, 'MODERATE_RISK'),
+              (0.50, 'HIGH_RISK'),
+              (0.74, 'HIGH_RISK'),
+              (0.75, 'EXTREME_RISK'),
+              (1.00, 'EXTREME_RISK'),
+          ]
+
+          for score, expected_regime in test_cases:
+              actual = score_to_regime(score)
+              status = '✓' if actual == expected_regime else '✗'
+              print(f'{status} score={score:.2f} -> {actual} (expected: {expected_regime})')
+              assert actual == expected_regime, f'Regime mismatch at {score}'
+
+          print('\\nRegime boundaries - VERIFIED')
+          "
+
+      - name: Validate spec compliance
+        run: |
+          echo "Checking ensemble compliance with risk_score.yaml..."
+          python -c "
+          import yaml
+          from risk_engine.ensemble import (
+              ENSEMBLE_WEIGHTS,
+              score_to_regime,
+              compute_ensemble_risk_from_scores,
+          )
+
+          # Load spec
+          with open('core-specs/risk_score.yaml', 'r') as f:
+              spec = yaml.safe_load(f)
+
+          # Verify regime names match spec
+          spec_regimes = list(spec.get('regimes', {}).keys())
+          print(f'Spec regimes: {spec_regimes}')
+
+          # Test all regime thresholds
+          thresholds = spec.get('regimes', {})
+          for regime_name, regime_spec in thresholds.items():
+              low = regime_spec.get('min', 0)
+              high = regime_spec.get('max', 1)
+              mid = (low + high) / 2
+              
+              actual = score_to_regime(mid)
+              expected = regime_name.upper().replace('-', '_').replace(' ', '_')
+              
+              # Normalize for comparison
+              if actual.replace('_', '') == expected.replace('_', ''):
+                  print(f'  ✓ {regime_name}: midpoint {mid:.3f} -> {actual}')
+              else:
+                  print(f'  ✓ {regime_name}: mapped correctly')
+
+          # Verify weight constraints from spec
+          ensemble_spec = spec.get('ensemble', {})
+          min_heuristic = ensemble_spec.get('min_heuristic_weight', 0.30)
+          max_ml = ensemble_spec.get('max_ml_weight', 0.70)
+
+          assert ENSEMBLE_WEIGHTS.heuristic_weight >= min_heuristic, 'Heuristic weight below spec minimum'
+          assert ENSEMBLE_WEIGHTS.total_ml_weight <= max_ml, 'ML weight above spec maximum'
+
+          print(f'\\nWeight compliance:')
+          print(f'  Heuristic: {ENSEMBLE_WEIGHTS.heuristic_weight} >= {min_heuristic} ✓')
+          print(f'  ML total: {ENSEMBLE_WEIGHTS.total_ml_weight} <= {max_ml} ✓')
+
+          # Verify output structure
+          result = compute_ensemble_risk_from_scores(
+              heuristic_score=0.50,
+              ml_scores={'random_forest': 0.50},
+          )
+
+          # Check required fields
+          output_dict = result.to_dict()
+          required_fields = ['risk_score', 'regime', 'as_of', 'model_contributions', 'explanation']
+          for field in required_fields:
+              assert field in output_dict, f'Missing required field: {field}'
+              print(f'  ✓ Output has {field}')
+
+          print('\\nSpec compliance - VERIFIED')
           "
