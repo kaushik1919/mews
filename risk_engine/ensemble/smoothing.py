@@ -24,6 +24,19 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
+def _to_scalar(value: float | np.ndarray) -> float:
+    """
+    Normalize a value to a Python float.
+
+    Prevents numpy ndarray leakage in smoothing outputs.
+    """
+    if isinstance(value, np.ndarray):
+        if value.size != 1:
+            raise ValueError("Risk score must be scalar")
+        return float(value.item())
+    return float(value)
+
+
 class SmoothingMethod(Enum):
     """Supported smoothing methods."""
 
@@ -104,8 +117,11 @@ class SmoothingState:
             config: Smoothing configuration
 
         Returns:
-            Smoothed risk score
+            Smoothed risk score (always Python float)
         """
+        # Normalize input to scalar
+        raw_score = _to_scalar(raw_score)
+
         # Store history
         self.history.append(raw_score)
         self.timestamps.append(timestamp)
@@ -114,41 +130,46 @@ class SmoothingState:
 
         # Not enough history for smoothing
         if len(self.history) < config.min_history:
-            self.ema_value = raw_score
-            return raw_score
+            self.ema_value = _to_scalar(raw_score)
+            return _to_scalar(raw_score)
 
         # Check for spike preservation
         if config.preserve_spikes and prev_raw is not None:
             if raw_score - prev_raw > config.spike_threshold:
                 # This is a spike - don't smooth
-                self.ema_value = raw_score
-                return raw_score
+                self.ema_value = _to_scalar(raw_score)
+                return _to_scalar(raw_score)
 
         # Apply smoothing
         if config.method == SmoothingMethod.NONE:
-            return raw_score
+            return _to_scalar(raw_score)
 
         elif config.method == SmoothingMethod.EXPONENTIAL_MA:
-            return self._compute_ema(raw_score, config)
+            result = self._compute_ema(raw_score, config)
+            return _to_scalar(result)
 
         elif config.method == SmoothingMethod.SIMPLE_MA:
-            return self._compute_sma(config)
+            result = self._compute_sma(config)
+            return _to_scalar(result)
 
         else:
-            return raw_score
+            return _to_scalar(raw_score)
 
     def _compute_ema(self, raw_score: float, config: SmoothingConfig) -> float:
         """Compute exponential moving average."""
+        raw_score = _to_scalar(raw_score)
         if self.ema_value is None:
             self.ema_value = raw_score
         else:
-            self.ema_value = config.alpha * raw_score + (1 - config.alpha) * self.ema_value
-        return self.ema_value
+            ema_result = config.alpha * raw_score + (1 - config.alpha) * self.ema_value
+            self.ema_value = _to_scalar(ema_result)
+        return _to_scalar(self.ema_value)
 
     def _compute_sma(self, config: SmoothingConfig) -> float:
         """Compute simple moving average."""
         window_scores = self.history[-config.window:]
-        return float(np.mean(window_scores))
+        result = np.mean(window_scores)
+        return _to_scalar(result)
 
 
 def apply_temporal_smoothing(
@@ -185,7 +206,7 @@ def apply_temporal_smoothing(
     # Streaming mode: single score with state
     if current_score is not None and state is not None:
         # Normalize input to scalar float
-        current = float(current_score)
+        current = _to_scalar(current_score)
 
         # Use state's add_observation for streaming
         timestamp = pd.Timestamp.now() if timestamps is None else timestamps
@@ -194,16 +215,15 @@ def apply_temporal_smoothing(
 
         smoothed = state.add_observation(current, timestamp, config)
 
-        # Ensure scalar output
-        if isinstance(smoothed, np.ndarray):
-            if smoothed.size != 1:
-                raise ValueError("Temporal smoothing must return a scalar risk score")
-            smoothed = float(smoothed.item())
-        else:
-            smoothed = float(smoothed)
+        # Ensure scalar output using helper
+        smoothed = _to_scalar(smoothed)
 
         # Ensure output is in [0, 1]
         smoothed = max(0.0, min(1.0, smoothed))
+
+        # Defensive assertion
+        assert isinstance(smoothed, float), f"Expected float, got {type(smoothed)}"
+
         return smoothed
 
     # Batch mode: array of scores
