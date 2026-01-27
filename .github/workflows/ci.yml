@@ -168,6 +168,14 @@ jobs:
             "risk_engine/heuristic/subscores.py"
             "risk_engine/heuristic/explain.py"
             "risk_engine/heuristic/validate.py"
+            "risk_engine/ml/__init__.py"
+            "risk_engine/ml/config.py"
+            "risk_engine/ml/dataset.py"
+            "risk_engine/ml/models.py"
+            "risk_engine/ml/train.py"
+            "risk_engine/ml/evaluate.py"
+            "risk_engine/ml/explain.py"
+            "risk_engine/ml/validate.py"
           )
           
           missing=0
@@ -1400,3 +1408,170 @@ jobs:
           print('\\nSpec compliance - VERIFIED')
           "
 
+  validate-ml-models:
+    name: Validate ML Risk Models
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .  # Install from pyproject.toml
+          pip install shap xgboost lightgbm  # ML dependencies
+
+      - name: Import ML modules
+        run: |
+          echo "Verifying ML modules can be imported..."
+          python -c "
+          from risk_engine.ml.config import (
+              ML_CONFIG,
+              ModelType,
+              TargetType,
+              ALL_FEATURES,
+          )
+
+          print(f'Target type: {ML_CONFIG.target_type.value}')
+          print(f'Train period: {ML_CONFIG.splits.train_start} - {ML_CONFIG.splits.train_end}')
+          print(f'Val period: {ML_CONFIG.splits.val_start} - {ML_CONFIG.splits.val_end}')
+          print(f'Test period: {ML_CONFIG.splits.test_start} - {ML_CONFIG.splits.test_end}')
+          print(f'Features: {len(ALL_FEATURES)}')
+
+          print('\\nML config import successful.')
+          "
+
+      - name: Validate dataset construction
+        run: |
+          echo "Testing dataset construction with mock data..."
+          python -c "
+          from risk_engine.ml.dataset import create_mock_dataset, build_dataset
+          from risk_engine.ml.config import TargetType
+
+          # Create mock data
+          feature_data = create_mock_dataset(n_samples=500, start_date='2010-01-01')
+          print(f'Mock data shape: {feature_data.shape}')
+          print(f'Date range: {feature_data.index.min()} to {feature_data.index.max()}')
+
+          # Build dataset
+          dataset = build_dataset(feature_data, TargetType.REGIME_CLASSIFICATION)
+
+          print(f'\\nDataset splits:')
+          print(f'  Train: {dataset.train.n_samples} samples')
+          print(f'  Val: {dataset.val.n_samples} samples')
+          print(f'  Test: {dataset.test.n_samples} samples')
+          print(f'  Features: {dataset.train.n_features}')
+
+          # Verify temporal ordering
+          assert dataset.train.timestamps.max() < dataset.val.timestamps.min(), 'Train/val overlap'
+          assert dataset.val.timestamps.max() < dataset.test.timestamps.min(), 'Val/test overlap'
+
+          print('\\nDataset construction - VERIFIED')
+          "
+
+      - name: Run mock training job
+        run: |
+          echo "Running small mock training job..."
+          python -c "
+          import numpy as np
+          from risk_engine.ml.dataset import create_mock_dataset, build_dataset
+          from risk_engine.ml.config import TargetType, ModelType
+          from risk_engine.ml.train import train_model
+
+          # Create mock data with enough samples
+          feature_data = create_mock_dataset(n_samples=1000, start_date='2008-01-01')
+
+          # Build dataset
+          dataset = build_dataset(feature_data, TargetType.REGIME_CLASSIFICATION)
+
+          print('Training Ridge model...')
+          trained = train_model(ModelType.RIDGE, dataset, verbose=False)
+
+          print(f'Model type: {trained.model_type.value}')
+          print(f'Train accuracy: {trained.training_metrics.train_accuracy:.4f}')
+          print(f'Val accuracy: {trained.training_metrics.val_accuracy:.4f}')
+          print(f'Version: {trained.version}')
+
+          # Verify risk scores are in [0, 1]
+          risk_scores = trained.predict_risk_score(dataset.test.X)
+          assert np.all(risk_scores >= 0) and np.all(risk_scores <= 1), 'Scores out of range'
+
+          print(f'\\nRisk score range: [{risk_scores.min():.4f}, {risk_scores.max():.4f}]')
+          print('Mock training job - VERIFIED')
+          "
+
+      - name: Validate deterministic training
+        run: |
+          echo "Verifying deterministic training..."
+          python -c "
+          import numpy as np
+          from risk_engine.ml.dataset import create_mock_dataset, build_dataset
+          from risk_engine.ml.config import TargetType, ModelType
+          from risk_engine.ml.train import train_model
+
+          # Create same mock data twice
+          np.random.seed(42)
+          feature_data = create_mock_dataset(n_samples=500, start_date='2010-01-01', random_state=42)
+          dataset = build_dataset(feature_data, TargetType.REGIME_CLASSIFICATION)
+
+          # Train twice
+          trained1 = train_model(ModelType.RIDGE, dataset, verbose=False)
+          trained2 = train_model(ModelType.RIDGE, dataset, verbose=False)
+
+          # Predictions should be identical
+          preds1 = trained1.predict(dataset.test.X)
+          preds2 = trained2.predict(dataset.test.X)
+
+          assert np.array_equal(preds1, preds2), 'Non-deterministic predictions'
+          print('Deterministic training - VERIFIED')
+          "
+
+      - name: Validate no future data access
+        run: |
+          echo "Verifying no lookahead bias..."
+          python -c "
+          from risk_engine.ml.dataset import create_mock_dataset, build_dataset
+          from risk_engine.ml.validate import validate_temporal_integrity
+          from risk_engine.ml.config import TargetType
+
+          feature_data = create_mock_dataset(n_samples=500, start_date='2010-01-01')
+          dataset = build_dataset(feature_data, TargetType.REGIME_CLASSIFICATION)
+
+          result = validate_temporal_integrity(dataset)
+          assert result.passed, f'Temporal integrity failed: {result.message}'
+
+          print(f'Train max: {result.details[\"train_max\"]}')
+          print(f'Val min: {result.details[\"val_min\"]}')
+          print(f'Test min: {result.details[\"test_min\"]}')
+          print('\\nNo lookahead bias - VERIFIED')
+          "
+
+      - name: Validate Random Forest training
+        run: |
+          echo "Testing Random Forest model..."
+          python -c "
+          from risk_engine.ml.dataset import create_mock_dataset, build_dataset
+          from risk_engine.ml.config import TargetType, ModelType
+          from risk_engine.ml.train import train_model
+
+          feature_data = create_mock_dataset(n_samples=800, start_date='2008-01-01')
+          dataset = build_dataset(feature_data, TargetType.REGIME_CLASSIFICATION)
+
+          trained = train_model(ModelType.RANDOM_FOREST, dataset, verbose=False)
+
+          # Get feature importance
+          importance = trained.get_feature_importance()
+          top_features = sorted(importance.items(), key=lambda x: -x[1])[:3]
+
+          print('Top 3 features by importance:')
+          for name, imp in top_features:
+              print(f'  {name}: {imp:.4f}')
+
+          print('\\nRandom Forest - VERIFIED')
+          "
