@@ -14,9 +14,7 @@ Assumptions:
 """
 
 import hashlib
-import uuid
 from datetime import datetime, timedelta
-from typing import Any
 
 from .. import BaseAdapter, RawRecord
 

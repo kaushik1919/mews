@@ -364,7 +364,6 @@ class SchemaValidator:
         elif self._dataset_name == "financial_news":
             headline = data.get("headline")
             body = data.get("body")
-            url = data.get("url")
             article_id = data.get("article_id")
 
             # Validate headline is present and non-empty
