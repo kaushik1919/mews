@@ -109,6 +109,46 @@ DEMO_CAPTIONS = {
     ),
 }
 
+# Chapter figures
+CHAPTER_CAPTIONS = {
+    "fig_2_2_evolution_static_to_interpretable_ml_early_warning_system.png": (
+        "**Figure 2.2: Evolution from Static Risk Dashboards to Interpretable ML-Based Early Warning Systems.** "
+        "A static risk dashboard depends on retrospective indicators and manual thresholds, while the MEWS design "
+        "adds time-aligned ingestion, engineered features, dual engines, calibration, and explanations to produce "
+        "an adaptive early warning system."
+    ),
+    "fig_2_3_objective_to_implementation_mapping.png": (
+        "**Figure 2.3: Objective-to-Implementation Mapping Through Feature Engineering and Dual-Engine Design.** "
+        "Project objectives such as reproducibility, transparency, accessibility, and independence map directly to "
+        "free public data sources, deterministic mock mode, feature engineering, and a dual-engine scoring design."
+    ),
+    "fig_4_2_heuristic_vs_ml_risk_score_historical_crises.png": (
+        "**Figure 4.2: Heuristic vs ML Risk Score Time Series Comparison Across Historical Crisis Periods.** "
+        "The heuristic and ML scores are compared in crisis-specific windows around the GFC, Eurozone stress, COVID-19, "
+        "and the 2022 rate-hike regime. The ML curve is more reactive, while the heuristic score remains smoother."
+    ),
+    "fig_4_3_calibration_curve_before_after_isotonic.png": (
+        "**Figure 4.3: Calibration Curve: Predicted Risk Score vs Observed Crisis Frequency Before and After Isotonic Calibration.** "
+        "The before-calibration curve is overconfident relative to the diagonal. Isotonic calibration brings predicted "
+        "risk scores into closer alignment with observed crisis frequency."
+    ),
+    "fig_5_2_daily_pipeline_data_flow.png": (
+        "**Figure 5.2: Daily Pipeline Data Flow from Raw Market Data to Risk Report Generation.** "
+        "The operational pipeline flows from market, volatility, macro, and news inputs through ingestion, features, "
+        "risk scoring, and report generation, with explicit support for mock and live execution modes."
+    ),
+    "fig_5_3_docker_deployment_diagram.png": (
+        "**Figure 5.3: Docker Deployment Diagram with CLI Entry Points and Mock/Live Modes.** "
+        "The container bundles the daily pipeline and documentation generator, exposing CLI entry points for mock and live "
+        "runs while keeping deployment CPU-only and reproducible."
+    ),
+    "fig_5_4_phase_iii_integration_validation_methodology.png": (
+        "**Figure 5.4: Phase III Integration and Validation Methodology Flow.** "
+        "The methodology gates progression through contract checks, integration tests, calibration, and historical backtesting "
+        "before release."
+    ),
+}
+
 # Combined caption dictionary
 ALL_CAPTIONS = {
     **ARCHITECTURE_CAPTIONS,
@@ -116,6 +156,7 @@ ALL_CAPTIONS = {
     **RISK_ENGINE_CAPTIONS,
     **EVALUATION_CAPTIONS,
     **DEMO_CAPTIONS,
+    **CHAPTER_CAPTIONS,
 }
 
 
