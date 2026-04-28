@@ -1,10 +1,10 @@
 """Generate MEWS architecture diagram as a PNG image."""
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
+from matplotlib.patches import FancyBboxPatch
 
 fig, ax = plt.subplots(figsize=(20, 14))
 ax.set_xlim(0, 20)
@@ -44,7 +44,7 @@ def draw_box(x, y, w, h, text, border="#90a4ae", fill=C_BOX, fontsize=8):
 
 def arrow(x1, y1, x2, y2, color="#78909c"):
     ax.annotate("", xy=(x2, y2), xytext=(x1, y1),
-                arrowprops=dict(arrowstyle="-|>", color=color, lw=1.4), zorder=4)
+                arrowprops={"arrowstyle": "-|>", "color": color, "lw": 1.4}, zorder=4)
 
 # ════════════════════════════════════════════
 #  ROW 1 — Data Sources  (y 11.2 → 13.4)
@@ -157,9 +157,10 @@ for i in range(4):
 # ── Title ──
 ax.text(10, 13.8, "MEWS — Market Early Warning System", ha="center", va="center",
         fontsize=18, fontweight="bold", color="#1a237e",
-        bbox=dict(boxstyle="round,pad=0.4", facecolor="#e8eaf6", edgecolor="#3949ab", linewidth=2))
+    bbox={"boxstyle": "round,pad=0.4", "facecolor": "#e8eaf6", "edgecolor": "#3949ab", "linewidth": 2})
 
 plt.tight_layout()
 plt.savefig("figures/architecture/mews_architecture_generated.png", dpi=180,
             bbox_inches="tight", facecolor=fig.get_facecolor())
 print("Saved to figures/architecture/mews_architecture_generated.png")
+

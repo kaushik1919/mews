@@ -15,9 +15,15 @@ import numpy as np
 import pandas as pd
 from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
 
-from .config import ARCHITECTURE_DIR, COLORS, RISK_ENGINE_DIR, apply_style, save_figure, shade_crisis_periods
-from .risk import CRISIS_PERIODS, generate_mock_risk_scores
-
+from .config import (
+    ARCHITECTURE_DIR,
+    COLORS,
+    RISK_ENGINE_DIR,
+    apply_style,
+    save_figure,
+    shade_crisis_periods,
+)
+from .risk import generate_mock_risk_scores
 
 CHAPTER_2_2_PATH = ARCHITECTURE_DIR / "fig_2_2_evolution_static_to_interpretable_ml_early_warning_system.png"
 CHAPTER_2_3_PATH = ARCHITECTURE_DIR / "fig_2_3_objective_to_implementation_mapping.png"
