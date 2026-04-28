@@ -40,6 +40,7 @@ dependencies = [
     "pandas>=2.0",
     "pyarrow>=14.0",
     "numpy>=1.24",
+    "scikit-learn>=1.3",
     "scipy>=1.10",  # For calibration (Platt scaling optimization)
     "matplotlib>=3.6",  # For visualization module (Agg backend)
 ]
@@ -111,6 +112,7 @@ packages = [
     "risk_engine.evaluation",
     "risk_engine.heuristic",
     "risk_engine.ml",
+    "risk_engine.ml.autoresearch",
     "pipeline",
     "pipeline.daily_run",
     "visualization",

@@ -204,6 +204,38 @@ python -m pipeline.daily_run.run --mock --verbose
 python -m pipeline.daily_run.run --help
 ```
 
+### Run Autoresearch For MEWS ML Models
+
+MEWS includes an autoresearch-style harness inspired by
+[karpathy/autoresearch](https://github.com/karpathy/autoresearch), adapted to
+our risk model stack.
+
+```bash
+# Run one deterministic experiment and print objective
+python -m risk_engine.ml.autoresearch.evaluate_candidate --model-type random_forest --split val
+
+# JSON output for automation
+python -m risk_engine.ml.autoresearch.evaluate_candidate --model-type random_forest --split val --json
+```
+
+Results are appended to `risk_engine/ml/autoresearch/results.tsv`.
+Agent instructions for autonomous iteration are in
+`risk_engine/ml/autoresearch/program.md`.
+
+### Autoresearch Improvement Trend
+
+![Autoresearch Improvement Trend](figures/evaluation/autoresearch_improvement_trend.png)
+
+*Example campaign trend from the MEWS autoresearch harness. The solid line is
+per-run objective, and the dashed line is rolling best-so-far objective.*
+
+```bash
+# Example campaign (baseline -> improved candidate)
+python -m risk_engine.ml.autoresearch.evaluate_candidate --model-type ridge --split val --seed 42 --samples 5000
+python -m risk_engine.ml.autoresearch.evaluate_candidate --model-type random_forest --split val --seed 42 --samples 5000
+python -m risk_engine.ml.autoresearch.evaluate_candidate --model-type random_forest --split val --seed 7 --samples 5000
+```
+
 ### Generate Documentation Figures
 
 ```bash

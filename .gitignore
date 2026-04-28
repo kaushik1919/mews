@@ -66,6 +66,7 @@ data/
 # Logs
 *.log
 logs/
+risk_engine/ml/autoresearch/results.tsv
 
 # Secrets (must never exist)
 .env
